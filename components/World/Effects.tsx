@@ -10,7 +10,7 @@ import { BlendFunction } from 'postprocessing';
 
 export const Effects: React.FC = () => {
   return (
-    <EffectComposer disableNormalPass multisampling={0}>
+    <EffectComposer multisampling={0}>
       {/* Tighter bloom to avoid fog: High threshold, moderate radius */}
       <Bloom 
         luminanceThreshold={0.75} 

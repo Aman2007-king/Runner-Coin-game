@@ -5,10 +5,11 @@
 
 
 import React, { useState, useEffect } from 'react';
-import { Heart, Zap, Trophy, MapPin, Diamond, Rocket, ArrowUpCircle, Shield, Activity, PlusCircle, Play } from 'lucide-react';
+import { Heart, Zap, Trophy, MapPin, Diamond, Rocket, ArrowUpCircle, Shield, Activity, PlusCircle, Play, User, Palette, List, Pause } from 'lucide-react';
 import { useStore } from '../../store';
-import { GameStatus, GEMINI_COLORS, ShopItem, RUN_SPEED_BASE } from '../../types';
+import { GameStatus, GEMINI_COLORS, ShopItem, RUN_SPEED_BASE, SkinType } from '../../types';
 import { audio } from '../System/Audio';
+import { saveHighScore, getLeaderboard } from '../../firebase';
 
 // Available Shop Items
 const SHOP_ITEMS: ShopItem[] = [
@@ -104,8 +105,166 @@ const ShopScreen: React.FC = () => {
     );
 };
 
+const PauseScreen: React.FC = () => {
+    const { resumeGame, restartGame, setStatus } = useStore();
+
+    return (
+        <div className="absolute inset-0 bg-black/80 z-[200] text-white pointer-events-auto backdrop-blur-md flex flex-col items-center justify-center p-8">
+            <h2 className="text-5xl font-black text-cyan-400 mb-12 font-cyber tracking-widest uppercase">Mission Paused</h2>
+            
+            <div className="flex flex-col space-y-6 w-full max-w-xs">
+                <button 
+                    onClick={resumeGame}
+                    className="w-full py-4 bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-black text-xl rounded-xl hover:scale-105 transition-all shadow-[0_0_20px_rgba(0,255,255,0.3)] flex items-center justify-center"
+                >
+                    <Play className="mr-3 fill-white" /> RESUME
+                </button>
+                
+                <button 
+                    onClick={restartGame}
+                    className="w-full py-4 bg-white/10 border border-white/20 text-white font-bold text-lg rounded-xl hover:bg-white/20 transition-all"
+                >
+                    RESTART MISSION
+                </button>
+
+                <button 
+                    onClick={() => setStatus(GameStatus.MENU)}
+                    className="w-full py-4 text-gray-400 hover:text-white transition-all font-mono text-sm tracking-widest"
+                >
+                    [ ABORT MISSION ]
+                </button>
+            </div>
+        </div>
+    );
+};
+
+const SkinShop: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+    const { gemsCollected, currentSkin, unlockedSkins, setSkin, unlockSkin } = useStore();
+    
+    const skins = [
+        { type: SkinType.DEFAULT, name: 'CLASSIC NEON', cost: 0, color: '#00aaff' },
+        { type: SkinType.NEON_BLUE, name: 'DEEP BLUE', cost: 500, color: '#0066ff' },
+        { type: SkinType.NEON_GOLD, name: 'CYBER GOLD', cost: 1000, color: '#ffaa00' },
+        { type: SkinType.PHANTOM, name: 'PHANTOM', cost: 2000, color: '#ff00ff' },
+    ];
+
+    return (
+        <div className="absolute inset-0 bg-black/95 z-[110] text-white pointer-events-auto backdrop-blur-lg flex flex-col items-center justify-center p-8">
+            <h2 className="text-4xl font-black text-pink-500 mb-8 font-cyber tracking-widest">SKIN PROTOCOLS</h2>
+            <div className="flex items-center text-cyan-400 mb-8">
+                <Diamond className="mr-2" />
+                <span className="text-2xl font-bold">{gemsCollected}</span>
+            </div>
+            
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 w-full max-w-4xl mb-12">
+                {skins.map(skin => {
+                    const isUnlocked = unlockedSkins.includes(skin.type);
+                    const isSelected = currentSkin === skin.type;
+                    const canAfford = gemsCollected >= skin.cost;
+                    
+                    return (
+                        <div 
+                            key={skin.type} 
+                            className={`p-6 rounded-2xl border-2 transition-all flex flex-col items-center ${isSelected ? 'border-white bg-white/10' : 'border-gray-800 bg-gray-900'}`}
+                        >
+                            <div className="w-16 h-16 rounded-full mb-4 shadow-lg" style={{ backgroundColor: skin.color }}></div>
+                            <h3 className="font-bold mb-4 text-center">{skin.name}</h3>
+                            
+                            {isUnlocked ? (
+                                <button 
+                                    onClick={() => setSkin(skin.type)}
+                                    className={`w-full py-2 rounded font-bold ${isSelected ? 'bg-white text-black' : 'bg-gray-700 text-white'}`}
+                                >
+                                    {isSelected ? 'ACTIVE' : 'SELECT'}
+                                </button>
+                            ) : (
+                                <button 
+                                    onClick={() => unlockSkin(skin.type, skin.cost)}
+                                    disabled={!canAfford}
+                                    className={`w-full py-2 rounded font-bold ${canAfford ? 'bg-pink-600' : 'bg-gray-800 text-gray-500'}`}
+                                >
+                                    {skin.cost} GEMS
+                                </button>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+            
+            <button onClick={onClose} className="px-12 py-4 bg-white text-black font-black rounded-full hover:scale-105 transition-all">
+                BACK TO MENU
+            </button>
+        </div>
+    );
+};
+
+const LeaderboardModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+    const [scores, setScores] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchScores = async () => {
+            const data = await getLeaderboard();
+            setScores(data);
+            setLoading(false);
+        };
+        fetchScores();
+    }, []);
+
+    return (
+        <div className="absolute inset-0 bg-black/95 z-[110] text-white pointer-events-auto backdrop-blur-lg flex flex-col items-center justify-center p-8">
+            <h2 className="text-4xl font-black text-yellow-500 mb-8 font-cyber tracking-widest">GLOBAL RANKINGS</h2>
+            
+            <div className="w-full max-w-md bg-gray-900/50 rounded-2xl border border-gray-800 p-6 mb-8 overflow-y-auto max-h-[60vh]">
+                {loading ? (
+                    <div className="flex justify-center py-12"><Zap className="animate-spin text-yellow-500" /></div>
+                ) : (
+                    <div className="space-y-4">
+                        {scores.map((s, i) => (
+                            <div key={i} className="flex justify-between items-center p-3 border-b border-gray-800">
+                                <div className="flex items-center">
+                                    <span className={`w-8 font-bold ${i < 3 ? 'text-yellow-400' : 'text-gray-500'}`}>{i + 1}</span>
+                                    <span className="font-medium">{s.name}</span>
+                                </div>
+                                <span className="font-mono text-cyan-400">{s.score.toLocaleString()}</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+            
+            <button onClick={onClose} className="px-12 py-4 bg-white text-black font-black rounded-full hover:scale-105 transition-all">
+                CLOSE
+            </button>
+        </div>
+    );
+};
+
 export const HUD: React.FC = () => {
-  const { score, lives, maxLives, collectedLetters, status, level, restartGame, startGame, gemsCollected, distance, isImmortalityActive, speed } = useStore();
+  const { 
+    score, 
+    lives, 
+    maxLives, 
+    collectedLetters, 
+    status, 
+    level, 
+    restartGame, 
+    startGame, 
+    gemsCollected, 
+    distance, 
+    isImmortalityActive, 
+    speed,
+    shieldActive,
+    magnetActive,
+    speedBoostActive,
+    pauseGame
+  } = useStore();
+  
+  const [showSkins, setShowSkins] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [playerName, setPlayerName] = useState(localStorage.getItem('gemini_player_name') || '');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const target = ['G', 'E', 'M', 'I', 'N', 'I'];
 
   // Common container style
@@ -113,6 +272,10 @@ export const HUD: React.FC = () => {
 
   if (status === GameStatus.SHOP) {
       return <ShopScreen />;
+  }
+
+  if (status === GameStatus.PAUSED) {
+      return <PauseScreen />;
   }
 
   if (status === GameStatus.MENU) {
@@ -147,19 +310,68 @@ export const HUD: React.FC = () => {
                         <p className="text-cyan-400/60 text-[10px] md:text-xs font-mono mt-3 tracking-wider">
                             [ ARROWS / SWIPE TO MOVE ]
                         </p>
+
+                        <div className="flex space-x-4 mt-6">
+                           <button 
+                               onClick={() => setShowSkins(true)}
+                               className="p-3 bg-white/5 border border-white/10 rounded-full hover:bg-white/10 transition-all pointer-events-auto"
+                           >
+                               <Palette className="text-pink-500" />
+                           </button>
+                           <button 
+                               onClick={() => setShowLeaderboard(true)}
+                               className="p-3 bg-white/5 border border-white/10 rounded-full hover:bg-white/10 transition-all pointer-events-auto"
+                           >
+                               <List className="text-yellow-500" />
+                           </button>
+                        </div>
                      </div>
                 </div>
               </div>
+
+              {showSkins && <SkinShop onClose={() => setShowSkins(false)} />}
+              {showLeaderboard && <LeaderboardModal onClose={() => setShowLeaderboard(false)} />}
           </div>
       );
   }
 
   if (status === GameStatus.GAME_OVER) {
+      const handleScoreSubmit = async () => {
+          if (!playerName.trim() || isSubmitting) return;
+          setIsSubmitting(true);
+          localStorage.setItem('gemini_player_name', playerName);
+          await saveHighScore(playerName, score);
+          setIsSubmitting(false);
+          setShowLeaderboard(true);
+      };
+
       return (
           <div className="absolute inset-0 bg-black/90 z-[100] text-white pointer-events-auto backdrop-blur-sm overflow-y-auto">
               <div className="flex flex-col items-center justify-center min-h-full py-8 px-4">
                 <h1 className="text-4xl md:text-6xl font-black text-white mb-6 drop-shadow-[0_0_10px_rgba(255,0,0,0.8)] font-cyber text-center">GAME OVER</h1>
                 
+                <div className="w-full max-w-md mb-8">
+                    <div className="bg-gray-900/80 p-6 rounded-xl border border-gray-700 mb-4">
+                        <label className="block text-xs text-gray-400 mb-2 tracking-widest uppercase">TRANSMIT SCORE TO COSMOS</label>
+                        <div className="flex space-x-2">
+                            <input 
+                                type="text"
+                                value={playerName}
+                                onChange={(e) => setPlayerName(e.target.value.toUpperCase().slice(0, 12))}
+                                placeholder="ENTER NAME"
+                                className="flex-1 bg-black border border-gray-700 rounded px-4 py-2 font-mono text-cyan-400 focus:border-cyan-500 outline-none"
+                            />
+                            <button 
+                                onClick={handleScoreSubmit}
+                                disabled={isSubmitting || !playerName.trim()}
+                                className="bg-yellow-600 px-4 py-2 rounded font-bold disabled:opacity-50"
+                            >
+                                {isSubmitting ? '...' : 'SUBMIT'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <div className="grid grid-cols-1 gap-3 md:gap-4 text-center mb-8 w-full max-w-md">
                     <div className="bg-gray-900/80 p-3 md:p-4 rounded-lg border border-gray-700 flex items-center justify-between">
                         <div className="flex items-center text-yellow-400 text-sm md:text-base"><Trophy className="mr-2 w-4 h-4 md:w-5 md:h-5"/> LEVEL</div>
@@ -234,9 +446,17 @@ export const HUD: React.FC = () => {
     <div className={containerClass}>
         {/* Top Bar */}
         <div className="flex justify-between items-start w-full">
-            <div className="flex flex-col">
-                <div className="text-3xl md:text-5xl font-bold text-cyan-400 drop-shadow-[0_0_10px_#00ffff] font-cyber">
-                    {score.toLocaleString()}
+            <div className="flex items-center space-x-4">
+                <button 
+                    onClick={pauseGame}
+                    className="p-2 bg-black/50 border border-white/10 rounded-lg hover:bg-white/10 transition-all pointer-events-auto"
+                >
+                    <Pause className="text-white w-6 h-6" />
+                </button>
+                <div className="flex flex-col">
+                    <div className="text-3xl md:text-5xl font-bold text-cyan-400 drop-shadow-[0_0_10px_#00ffff] font-cyber">
+                        {score.toLocaleString()}
+                    </div>
                 </div>
             </div>
             
@@ -256,11 +476,28 @@ export const HUD: React.FC = () => {
         </div>
 
         {/* Active Skill Indicator */}
-        {isImmortalityActive && (
-             <div className="absolute top-24 left-1/2 transform -translate-x-1/2 text-yellow-400 font-bold text-xl md:text-2xl animate-pulse flex items-center drop-shadow-[0_0_10px_gold]">
-                 <Shield className="mr-2 fill-yellow-400" /> IMMORTAL
-             </div>
-        )}
+        <div className="absolute top-24 left-1/2 transform -translate-x-1/2 flex flex-col items-center space-y-2">
+            {isImmortalityActive && (
+                <div className="text-yellow-400 font-bold text-xl md:text-2xl animate-pulse flex items-center drop-shadow-[0_0_10px_gold]">
+                    <Shield className="mr-2 fill-yellow-400" /> IMMORTAL
+                </div>
+            )}
+            {shieldActive && (
+                <div className="text-cyan-400 font-bold text-lg md:text-xl flex items-center drop-shadow-[0_0_10px_cyan]">
+                    <Shield className="mr-2" /> SHIELD ACTIVE
+                </div>
+            )}
+            {magnetActive && (
+                <div className="text-pink-400 font-bold text-lg md:text-xl flex items-center drop-shadow-[0_0_10px_pink] animate-bounce">
+                    <Zap className="mr-2 fill-pink-400" /> MAGNET ACTIVE
+                </div>
+            )}
+            {speedBoostActive && (
+                <div className="text-yellow-400 font-bold text-lg md:text-xl flex items-center drop-shadow-[0_0_10px_yellow] italic">
+                    <Rocket className="mr-2" /> SPEED BOOST
+                </div>
+            )}
+        </div>
 
         {/* Gemini Collection Status - Just below Top Bar */}
         <div className="absolute top-16 md:top-24 left-1/2 transform -translate-x-1/2 flex space-x-2 md:space-x-3">

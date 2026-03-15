@@ -13,6 +13,9 @@ import { LevelManager } from './components/World/LevelManager';
 import { Effects } from './components/World/Effects';
 import { HUD } from './components/UI/HUD';
 import { useStore } from './store';
+import { GameStatus } from './types';
+import { audio } from './components/System/Audio';
+import ErrorBoundary from './components/System/ErrorBoundary';
 
 // Dynamic Camera Controller
 const CameraController = () => {
@@ -68,22 +71,48 @@ function Scene() {
 }
 
 function App() {
+  const { status, togglePause } = useStore();
+
+  React.useEffect(() => {
+    if (status === GameStatus.PLAYING) {
+      audio.startMusic();
+    } else if (status === GameStatus.PAUSED) {
+      // Keep music playing or pause it? Usually pause or lower volume.
+      // Let's pause it for now as requested "stop all game logic and animations"
+      audio.stopMusic();
+    } else {
+      audio.stopMusic();
+    }
+  }, [status]);
+
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') {
+        togglePause();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [togglePause]);
+
   return (
-    <div className="relative w-full h-screen bg-black overflow-hidden select-none">
-      <HUD />
-      <Canvas
-        shadows
-        dpr={[1, 1.5]} 
-        gl={{ antialias: false, stencil: false, depth: true, powerPreference: "high-performance" }}
-        // Initial camera, matches the controller base
-        camera={{ position: [0, 5.5, 8], fov: 60 }}
-      >
-        <CameraController />
-        <Suspense fallback={null}>
-            <Scene />
-        </Suspense>
-      </Canvas>
-    </div>
+    <ErrorBoundary>
+      <div className="relative w-full h-screen bg-black overflow-hidden select-none">
+        <HUD />
+        <Canvas
+          shadows
+          dpr={[1, 1.5]} 
+          gl={{ antialias: false, stencil: false, depth: true, powerPreference: "high-performance" }}
+          // Initial camera, matches the controller base
+          camera={{ position: [0, 5.5, 8], fov: 60 }}
+        >
+          <CameraController />
+          <Suspense fallback={null}>
+              <Scene />
+          </Suspense>
+        </Canvas>
+      </div>
+    </ErrorBoundary>
   );
 }
 

@@ -150,6 +150,97 @@ export class AudioController {
     noise.start(t);
     noise.stop(t + 0.3);
   }
+
+  playPowerUp() {
+    if (!this.ctx || !this.masterGain) this.init();
+    if (!this.ctx || !this.masterGain) return;
+
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(400, t);
+    osc.frequency.exponentialRampToValueAtTime(1200, t + 0.2);
+    osc.frequency.exponentialRampToValueAtTime(800, t + 0.4);
+
+    gain.gain.setValueAtTime(0.3, t);
+    gain.gain.exponentialRampToValueAtTime(0.01, t + 0.5);
+
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+
+    osc.start(t);
+    osc.stop(t + 0.5);
+  }
+
+  playShieldActivate() {
+    if (!this.ctx || !this.masterGain) this.init();
+    if (!this.ctx || !this.masterGain) return;
+
+    const t = this.ctx.currentTime;
+    
+    // Create a "shimmering" rising sound
+    const count = 3;
+    for (let i = 0; i < count; i++) {
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        
+        osc.type = 'sine';
+        const startFreq = 400 + (i * 100);
+        const endFreq = 800 + (i * 200);
+        
+        osc.frequency.setValueAtTime(startFreq, t + (i * 0.05));
+        osc.frequency.exponentialRampToValueAtTime(endFreq, t + 0.3 + (i * 0.05));
+        
+        gain.gain.setValueAtTime(0.2, t + (i * 0.05));
+        gain.gain.exponentialRampToValueAtTime(0.01, t + 0.4 + (i * 0.05));
+        
+        osc.connect(gain);
+        gain.connect(this.masterGain);
+        
+        osc.start(t + (i * 0.05));
+        osc.stop(t + 0.4 + (i * 0.05));
+    }
+  }
+
+  // Simple rhythmic synth pulse for music
+  musicInterval: any = null;
+  startMusic() {
+    if (!this.ctx || !this.masterGain) this.init();
+    if (this.musicInterval) return;
+
+    let beat = 0;
+    this.musicInterval = setInterval(() => {
+      if (!this.ctx || !this.masterGain) return;
+      const t = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sawtooth';
+      // Bass pulse
+      const freq = beat % 4 === 0 ? 55 : 41.2; // A1 or E1
+      osc.frequency.setValueAtTime(freq, t);
+      osc.frequency.exponentialRampToValueAtTime(freq / 2, t + 0.2);
+
+      gain.gain.setValueAtTime(0.15, t);
+      gain.gain.exponentialRampToValueAtTime(0.01, t + 0.2);
+
+      osc.connect(gain);
+      gain.connect(this.masterGain);
+
+      osc.start(t);
+      osc.stop(t + 0.2);
+      beat++;
+    }, 250); // 120 BPM
+  }
+
+  stopMusic() {
+    if (this.musicInterval) {
+      clearInterval(this.musicInterval);
+      this.musicInterval = null;
+    }
+  }
 }
 
 export const audio = new AudioController();

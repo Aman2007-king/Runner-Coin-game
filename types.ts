@@ -8,6 +8,7 @@ export enum GameStatus {
   MENU = 'MENU',
   PLAYING = 'PLAYING',
   SHOP = 'SHOP',
+  PAUSED = 'PAUSED',
   GAME_OVER = 'GAME_OVER',
   VICTORY = 'VICTORY'
 }
@@ -18,12 +19,27 @@ export enum ObjectType {
   LETTER = 'LETTER',
   SHOP_PORTAL = 'SHOP_PORTAL',
   ALIEN = 'ALIEN',
-  MISSILE = 'MISSILE'
+  MISSILE = 'MISSILE',
+  POWERUP = 'POWERUP'
+}
+
+export enum PowerUpType {
+  SHIELD = 'SHIELD',
+  MAGNET = 'MAGNET',
+  SPEED_BOOST = 'SPEED_BOOST'
+}
+
+export enum SkinType {
+  DEFAULT = 'DEFAULT',
+  NEON_BLUE = 'NEON_BLUE',
+  NEON_GOLD = 'NEON_GOLD',
+  PHANTOM = 'PHANTOM'
 }
 
 export interface GameObject {
   id: string;
   type: ObjectType;
+  powerUpType?: PowerUpType;
   position: [number, number, number]; // x, y, z
   active: boolean;
   value?: string; // For letters (G, E, M...)

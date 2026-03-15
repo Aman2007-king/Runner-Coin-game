@@ -5,11 +5,13 @@
 
 
 import { create } from 'zustand';
-import { GameStatus, RUN_SPEED_BASE } from './types';
+import { GameStatus, RUN_SPEED_BASE, PowerUpType, SkinType } from './types';
+import { audio } from './components/System/Audio';
 
 interface GameState {
   status: GameStatus;
   score: number;
+  highScore: number;
   lives: number;
   maxLives: number;
   speed: number;
@@ -19,6 +21,15 @@ interface GameState {
   gemsCollected: number;
   distance: number;
   
+  // Power-ups
+  shieldActive: boolean;
+  magnetActive: boolean;
+  speedBoostActive: boolean;
+  
+  // Skins
+  currentSkin: SkinType;
+  unlockedSkins: SkinType[];
+
   // Inventory / Abilities
   hasDoubleJump: boolean;
   hasImmortality: boolean;
@@ -27,12 +38,18 @@ interface GameState {
   // Actions
   startGame: () => void;
   restartGame: () => void;
+  pauseGame: () => void;
+  resumeGame: () => void;
+  togglePause: () => void;
   takeDamage: () => void;
   addScore: (amount: number) => void;
   collectGem: (value: number) => void;
   collectLetter: (index: number) => void;
+  collectPowerUp: (type: PowerUpType) => void;
   setStatus: (status: GameStatus) => void;
   setDistance: (dist: number) => void;
+  setSkin: (skin: SkinType) => void;
+  unlockSkin: (skin: SkinType, cost: number) => boolean;
   
   // Shop / Abilities
   buyItem: (type: 'DOUBLE_JUMP' | 'MAX_LIFE' | 'HEAL' | 'IMMORTAL', cost: number) => boolean;
@@ -45,9 +62,13 @@ interface GameState {
 const GEMINI_TARGET = ['G', 'E', 'M', 'I', 'N', 'I'];
 const MAX_LEVEL = 3;
 
+// Load high score from local storage
+const savedHighScore = Number(localStorage.getItem('gemini_high_score')) || 0;
+
 export const useStore = create<GameState>((set, get) => ({
   status: GameStatus.MENU,
   score: 0,
+  highScore: savedHighScore,
   lives: 3,
   maxLives: 3,
   speed: 0,
@@ -57,6 +78,13 @@ export const useStore = create<GameState>((set, get) => ({
   gemsCollected: 0,
   distance: 0,
   
+  shieldActive: false,
+  magnetActive: false,
+  speedBoostActive: false,
+  
+  currentSkin: SkinType.DEFAULT,
+  unlockedSkins: [SkinType.DEFAULT],
+
   hasDoubleJump: false,
   hasImmortality: false,
   isImmortalityActive: false,
@@ -74,7 +102,10 @@ export const useStore = create<GameState>((set, get) => ({
     distance: 0,
     hasDoubleJump: false,
     hasImmortality: false,
-    isImmortalityActive: false
+    isImmortalityActive: false,
+    shieldActive: false,
+    magnetActive: false,
+    speedBoostActive: false
   }),
 
   restartGame: () => set({ 
@@ -90,28 +121,106 @@ export const useStore = create<GameState>((set, get) => ({
     distance: 0,
     hasDoubleJump: false,
     hasImmortality: false,
-    isImmortalityActive: false
+    isImmortalityActive: false,
+    shieldActive: false,
+    magnetActive: false,
+    speedBoostActive: false
   }),
 
+  pauseGame: () => {
+    const { status } = get();
+    if (status === GameStatus.PLAYING) {
+      set({ status: GameStatus.PAUSED });
+    }
+  },
+
+  resumeGame: () => {
+    const { status } = get();
+    if (status === GameStatus.PAUSED) {
+      set({ status: GameStatus.PLAYING });
+    }
+  },
+
+  togglePause: () => {
+    const { status } = get();
+    if (status === GameStatus.PLAYING) {
+      set({ status: GameStatus.PAUSED });
+    } else if (status === GameStatus.PAUSED) {
+      set({ status: GameStatus.PLAYING });
+    }
+  },
+
   takeDamage: () => {
-    const { lives, isImmortalityActive } = get();
-    if (isImmortalityActive) return; // No damage if skill is active
+    const { lives, isImmortalityActive, shieldActive } = get();
+    
+    if (isImmortalityActive) return; 
+    
+    if (shieldActive) {
+      set({ shieldActive: false });
+      return;
+    }
 
     if (lives > 1) {
       set({ lives: lives - 1 });
     } else {
+      const { score, highScore } = get();
+      if (score > highScore) {
+        set({ highScore: score });
+        localStorage.setItem('gemini_high_score', score.toString());
+      }
       set({ lives: 0, status: GameStatus.GAME_OVER, speed: 0 });
     }
   },
 
-  addScore: (amount) => set((state) => ({ score: state.score + amount })),
+  addScore: (amount) => {
+    set((state) => {
+      const newScore = state.score + amount;
+      return { score: newScore };
+    });
+  },
   
   collectGem: (value) => set((state) => ({ 
     score: state.score + value, 
     gemsCollected: state.gemsCollected + 1 
   })),
 
+  collectPowerUp: (type) => {
+    switch (type) {
+      case PowerUpType.SHIELD:
+        audio.playShieldActivate();
+        set({ shieldActive: true });
+        break;
+      case PowerUpType.MAGNET:
+        audio.playPowerUp();
+        set({ magnetActive: true });
+        setTimeout(() => set({ magnetActive: false }), 10000);
+        break;
+      case PowerUpType.SPEED_BOOST:
+        audio.playPowerUp();
+        const currentSpeed = get().speed;
+        set({ speedBoostActive: true, speed: currentSpeed * 1.5 });
+        setTimeout(() => {
+          set({ speedBoostActive: false, speed: get().speed / 1.5 });
+        }, 5000);
+        break;
+    }
+  },
+
   setDistance: (dist) => set({ distance: dist }),
+
+  setSkin: (skin) => set({ currentSkin: skin }),
+
+  unlockSkin: (skin, cost) => {
+    const { gemsCollected, unlockedSkins } = get();
+    if (gemsCollected >= cost && !unlockedSkins.includes(skin)) {
+      set({ 
+        gemsCollected: gemsCollected - cost,
+        unlockedSkins: [...unlockedSkins, skin]
+      });
+      return true;
+    }
+    return false;
+  },
 
   collectLetter: (index) => {
     const { collectedLetters, level, speed } = get();

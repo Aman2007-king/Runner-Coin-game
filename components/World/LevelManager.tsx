@@ -10,7 +10,7 @@ import * as THREE from 'three';
 import { Text3D, Center, Float } from '@react-three/drei';
 import { v4 as uuidv4 } from 'uuid';
 import { useStore } from '../../store';
-import { GameObject, ObjectType, LANE_WIDTH, SPAWN_DISTANCE, REMOVE_DISTANCE, GameStatus, GEMINI_COLORS } from '../../types';
+import { GameObject, ObjectType, LANE_WIDTH, SPAWN_DISTANCE, REMOVE_DISTANCE, GameStatus, GEMINI_COLORS, PowerUpType } from '../../types';
 import { audio } from '../System/Audio';
 
 // Geometry Constants
@@ -20,6 +20,7 @@ const OBSTACLE_GLOW_GEO = new THREE.ConeGeometry(0.9, OBSTACLE_HEIGHT, 6);
 const OBSTACLE_RING_GEO = new THREE.RingGeometry(0.6, 0.9, 6);
 
 const GEM_GEOMETRY = new THREE.IcosahedronGeometry(0.3, 0);
+const POWERUP_GEOMETRY = new THREE.TorusKnotGeometry(0.3, 0.1, 64, 8);
 
 // Alien Geometries
 const ALIEN_BODY_GEO = new THREE.CylinderGeometry(0.6, 0.3, 0.3, 8);
@@ -33,6 +34,7 @@ const MISSILE_RING_GEO = new THREE.TorusGeometry(0.15, 0.02, 16, 32);
 // Shadow Geometries
 const SHADOW_LETTER_GEO = new THREE.PlaneGeometry(2, 0.6);
 const SHADOW_GEM_GEO = new THREE.CircleGeometry(0.6, 32);
+const SHADOW_POWERUP_GEO = new THREE.CircleGeometry(0.8, 32);
 const SHADOW_ALIEN_GEO = new THREE.CircleGeometry(0.8, 32);
 const SHADOW_MISSILE_GEO = new THREE.PlaneGeometry(0.15, 3);
 const SHADOW_DEFAULT_GEO = new THREE.CircleGeometry(0.8, 6);
@@ -111,6 +113,9 @@ const ParticleSystem: React.FC = () => {
 
     useFrame((state, delta) => {
         if (!mesh.current) return;
+        const { status } = useStore.getState();
+        if (status === GameStatus.PAUSED) return;
+        
         const safeDelta = Math.min(delta, 0.1);
 
         particles.forEach((p, i) => {
@@ -163,11 +168,13 @@ export const LevelManager: React.FC = () => {
     speed, 
     collectGem, 
     collectLetter, 
+    collectPowerUp,
     collectedLetters,
     laneCount,
     setDistance,
     openShop,
-    level
+    level,
+    magnetActive
   } = useStore();
   
   const objectsRef = useRef<GameObject[]>([]);
@@ -259,6 +266,16 @@ export const LevelManager: React.FC = () => {
         // Missile Movement (Moves faster than world)
         if (obj.type === ObjectType.MISSILE) {
             moveAmount += MISSILE_SPEED * safeDelta;
+        }
+
+        // Magnet Attraction
+        if (magnetActive && obj.type === ObjectType.GEM && obj.active) {
+          const gemPos = new THREE.Vector3(...obj.position);
+          const dir = new THREE.Vector3().subVectors(playerPos, gemPos).normalize();
+          const pullSpeed = 25 * safeDelta;
+          obj.position[0] += dir.x * pullSpeed;
+          obj.position[1] += dir.y * pullSpeed;
+          obj.position[2] += dir.z * pullSpeed;
         }
 
         // Store previous Z for swept collision check (prevents tunneling)
@@ -357,6 +374,10 @@ export const LevelManager: React.FC = () => {
                                 collectLetter(obj.targetIndex);
                                 audio.playLetterCollect();
                             }
+                            if (obj.type === ObjectType.POWERUP && obj.powerUpType) {
+                                collectPowerUp(obj.powerUpType);
+                                audio.playPowerUp();
+                            }
                             
                             window.dispatchEvent(new CustomEvent('particle-burst', { 
                                 detail: { 
@@ -400,7 +421,6 @@ export const LevelManager: React.FC = () => {
     }
 
     if (furthestZ > -SPAWN_DISTANCE) {
-         // Reduced gap formula to increase obstacle frequency
          const minGap = 12 + (speed * 0.4); 
          const spawnZ = Math.min(furthestZ - minGap, -SPAWN_DISTANCE);
          
@@ -409,7 +429,6 @@ export const LevelManager: React.FC = () => {
          if (isLetterDue) {
              const lane = getRandomLane(laneCount);
              const target = ['G','E','M','I','N','I'];
-             
              const availableIndices = target.map((_, i) => i).filter(i => !collectedLetters.includes(i));
 
              if (availableIndices.length > 0) {
@@ -426,12 +445,9 @@ export const LevelManager: React.FC = () => {
                     value: val,
                     targetIndex: chosenIndex
                  });
-                 
-                 // Schedule next letter based on current level difficulty
                  nextLetterDistance.current += getLetterInterval(level);
                  hasChanges = true;
              } else {
-                // Fallback to gem if all letters collected for this level
                 keptObjects.push({
                     id: uuidv4(),
                     type: ObjectType.GEM,
@@ -442,108 +458,95 @@ export const LevelManager: React.FC = () => {
                 });
                 hasChanges = true;
              }
-
-         } else if (Math.random() > 0.1) { // 90% chance to attempt spawn if gap exists
-            
-            // Increased obstacle probability from 0.35 to 0.20 (80% Obstacle/Alien, 20% Gem)
-            const isObstacle = Math.random() > 0.20;
-
-            if (isObstacle) {
-                // Decide between Alien (Level 2+) or Spikes
-                const spawnAlien = level >= 2 && Math.random() < 0.2; // 20% chance of obstacle being alien
-
-                if (spawnAlien) {
-                    // Multi-Lane Alien Logic
-                    const availableLanes = [];
-                    const maxLane = Math.floor(laneCount / 2);
-                    for (let i = -maxLane; i <= maxLane; i++) availableLanes.push(i);
-                    availableLanes.sort(() => Math.random() - 0.5);
-
-                    // Determine how many aliens to spawn (1 to 3, based on probability)
-                    let alienCount = 1;
-                    const pAlien = Math.random();
-                    
-                    if (pAlien > 0.7) {
-                        // 30% chance for 2 aliens
-                        alienCount = Math.min(2, availableLanes.length);
-                    }
-                    // 10% chance for 3 aliens if there's enough space (and random allows)
-                    if (pAlien > 0.9 && availableLanes.length >= 3) {
-                        alienCount = 3;
-                    }
-
-                    for (let k = 0; k < alienCount; k++) {
-                        const lane = availableLanes[k];
-                        keptObjects.push({
-                            id: uuidv4(),
-                            type: ObjectType.ALIEN,
-                            position: [lane * LANE_WIDTH, 1.5, spawnZ],
-                            active: true,
-                            color: '#00ff00',
-                            hasFired: false
-                        });
-                    }
-                } else {
-                    // Standard Obstacle Spawning
-                    const availableLanes = [];
-                    const maxLane = Math.floor(laneCount / 2);
-                    for (let i = -maxLane; i <= maxLane; i++) availableLanes.push(i);
-                    availableLanes.sort(() => Math.random() - 0.5);
-                    
-                    let countToSpawn = 1;
-                    const p = Math.random();
-
-                    // Increased difficulty probabilities
-                    if (p > 0.80) {
-                        // Triple Spike (Was > 0.92)
-                        countToSpawn = Math.min(3, availableLanes.length);
-                    } else if (p > 0.50) {
-                        // Double Spike (Was > 0.75)
-                        countToSpawn = Math.min(2, availableLanes.length);
-                    } else {
-                        // Single Spike
-                        countToSpawn = 1;
-                    }
-
-                    for (let i = 0; i < countToSpawn; i++) {
-                        const lane = availableLanes[i];
-                        const laneX = lane * LANE_WIDTH;
-                        
-                        keptObjects.push({
-                            id: uuidv4(),
-                            type: ObjectType.OBSTACLE,
-                            position: [laneX, OBSTACLE_HEIGHT / 2, spawnZ],
-                            active: true,
-                            color: '#ff0054'
-                        });
-
-                        // Chance for gem on top of obstacle
-                        if (Math.random() < 0.3) {
-                             keptObjects.push({
-                                id: uuidv4(),
-                                type: ObjectType.GEM,
-                                position: [laneX, OBSTACLE_HEIGHT + 1.0, spawnZ],
-                                active: true,
-                                color: '#ffd700',
-                                points: 100
-                            });
-                        }
-                    }
-                }
-
-            } else {
-                // GROUND GEM SPAWNING
+         } else if (Math.random() > 0.1) {
+            if (Math.random() < 0.05) {
                 const lane = getRandomLane(laneCount);
+                const types = [PowerUpType.SHIELD, PowerUpType.MAGNET, PowerUpType.SPEED_BOOST];
+                const pType = types[Math.floor(Math.random() * types.length)];
+                const colors = { [PowerUpType.SHIELD]: '#00ffff', [PowerUpType.MAGNET]: '#ff00ff', [PowerUpType.SPEED_BOOST]: '#ffff00' };
+                
                 keptObjects.push({
                     id: uuidv4(),
-                    type: ObjectType.GEM,
-                    position: [lane * LANE_WIDTH, 1.2, spawnZ],
+                    type: ObjectType.POWERUP,
+                    powerUpType: pType,
+                    position: [lane * LANE_WIDTH, 1.5, spawnZ],
                     active: true,
-                    color: '#00ffff',
-                    points: 50
+                    color: colors[pType]
                 });
+                hasChanges = true;
+            } else {
+                const isObstacle = Math.random() > 0.20;
+
+                if (isObstacle) {
+                    const spawnAlien = level >= 2 && Math.random() < 0.2;
+                    if (spawnAlien) {
+                        const availableLanes = [];
+                        const maxLane = Math.floor(laneCount / 2);
+                        for (let i = -maxLane; i <= maxLane; i++) availableLanes.push(i);
+                        availableLanes.sort(() => Math.random() - 0.5);
+
+                        let alienCount = 1;
+                        const pAlien = Math.random();
+                        if (pAlien > 0.7) alienCount = Math.min(2, availableLanes.length);
+                        if (pAlien > 0.9 && availableLanes.length >= 3) alienCount = 3;
+
+                        for (let k = 0; k < alienCount; k++) {
+                            const lane = availableLanes[k];
+                            keptObjects.push({
+                                id: uuidv4(),
+                                type: ObjectType.ALIEN,
+                                position: [lane * LANE_WIDTH, 1.5, spawnZ],
+                                active: true,
+                                color: '#00ff00',
+                                hasFired: false
+                            });
+                        }
+                    } else {
+                        const availableLanes = [];
+                        const maxLane = Math.floor(laneCount / 2);
+                        for (let i = -maxLane; i <= maxLane; i++) availableLanes.push(i);
+                        availableLanes.sort(() => Math.random() - 0.5);
+                        
+                        let countToSpawn = 1;
+                        const p = Math.random();
+                        if (p > 0.80) countToSpawn = Math.min(3, availableLanes.length);
+                        else if (p > 0.50) countToSpawn = Math.min(2, availableLanes.length);
+
+                        for (let i = 0; i < countToSpawn; i++) {
+                            const lane = availableLanes[i];
+                            const laneX = lane * LANE_WIDTH;
+                            keptObjects.push({
+                                id: uuidv4(),
+                                type: ObjectType.OBSTACLE,
+                                position: [laneX, OBSTACLE_HEIGHT / 2, spawnZ],
+                                active: true,
+                                color: '#ff0054'
+                            });
+                            if (Math.random() < 0.3) {
+                                 keptObjects.push({
+                                    id: uuidv4(),
+                                    type: ObjectType.GEM,
+                                    position: [laneX, OBSTACLE_HEIGHT + 1.0, spawnZ],
+                                    active: true,
+                                    color: '#ffd700',
+                                    points: 100
+                                });
+                            }
+                        }
+                    }
+                } else {
+                    const lane = getRandomLane(laneCount);
+                    keptObjects.push({
+                        id: uuidv4(),
+                        type: ObjectType.GEM,
+                        position: [lane * LANE_WIDTH, 1.2, spawnZ],
+                        active: true,
+                        color: '#00ffff',
+                        points: 50
+                    });
+                }
+                hasChanges = true;
             }
-            hasChanges = true;
          }
     }
 
@@ -571,6 +574,9 @@ const GameEntity: React.FC<{ data: GameObject }> = React.memo(({ data }) => {
     const { laneCount } = useStore();
     
     useFrame((state, delta) => {
+        const { status } = useStore.getState();
+        if (status === GameStatus.PAUSED) return;
+
         // 1. Move Main Container
         if (groupRef.current) {
             groupRef.current.position.set(data.position[0], 0, data.position[2]);
@@ -610,6 +616,7 @@ const GameEntity: React.FC<{ data: GameObject }> = React.memo(({ data }) => {
     const shadowGeo = useMemo(() => {
         if (data.type === ObjectType.LETTER) return SHADOW_LETTER_GEO;
         if (data.type === ObjectType.GEM) return SHADOW_GEM_GEO;
+        if (data.type === ObjectType.POWERUP) return SHADOW_POWERUP_GEO;
         if (data.type === ObjectType.SHOP_PORTAL) return null; // No shadow needed or custom handled
         if (data.type === ObjectType.ALIEN) return SHADOW_ALIEN_GEO;
         if (data.type === ObjectType.MISSILE) return SHADOW_MISSILE_GEO;
@@ -745,6 +752,23 @@ const GameEntity: React.FC<{ data: GameObject }> = React.memo(({ data }) => {
                                 <meshStandardMaterial color={data.color} emissive={data.color} emissiveIntensity={1.5} />
                              </Text3D>
                          </Center>
+                    </group>
+                )}
+
+                {/* --- POWERUP --- */}
+                {data.type === ObjectType.POWERUP && (
+                    <group>
+                        <mesh geometry={POWERUP_GEOMETRY} castShadow>
+                            <meshStandardMaterial color={data.color} emissive={data.color} emissiveIntensity={2} metalness={1} roughness={0} />
+                        </mesh>
+                        <Float speed={5} rotationIntensity={2} floatIntensity={2}>
+                            <Center position={[0, 1.2, 0]}>
+                                <Text3D font={FONT_URL} size={0.3} height={0.1}>
+                                    {data.powerUpType}
+                                    <meshBasicMaterial color={data.color} />
+                                </Text3D>
+                            </Center>
+                        </Float>
                     </group>
                 )}
             </group>

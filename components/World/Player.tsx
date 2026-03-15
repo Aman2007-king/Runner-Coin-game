@@ -8,7 +8,7 @@ import React, { useRef, useEffect, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useStore } from '../../store';
-import { LANE_WIDTH, GameStatus } from '../../types';
+import { LANE_WIDTH, GameStatus, SkinType } from '../../types';
 import { audio } from '../System/Audio';
 
 // Physics Constants
@@ -38,7 +38,19 @@ export const Player: React.FC = () => {
   const rightLegRef = useRef<THREE.Group>(null);
   const headRef = useRef<THREE.Group>(null);
 
-  const { status, laneCount, takeDamage, hasDoubleJump, activateImmortality, isImmortalityActive } = useStore();
+  const shieldRef = useRef<THREE.Mesh>(null);
+
+  const { 
+    status, 
+    laneCount, 
+    takeDamage, 
+    hasDoubleJump, 
+    activateImmortality, 
+    isImmortalityActive,
+    currentSkin,
+    shieldActive,
+    speedBoostActive
+  } = useStore();
   
   const [lane, setLane] = React.useState(0);
   const targetX = useRef(0);
@@ -56,17 +68,46 @@ export const Player: React.FC = () => {
   const lastDamageTime = useRef(0);
 
   // Memoized Materials
-  const { armorMaterial, jointMaterial, glowMaterial, shadowMaterial } = useMemo(() => {
-      const armorColor = isImmortalityActive ? '#ffd700' : '#00aaff';
-      const glowColor = isImmortalityActive ? '#ffffff' : '#00ffff';
+  const { armorMaterial, jointMaterial, glowMaterial, shadowMaterial, shieldMaterial } = useMemo(() => {
+      let armorColor = '#00aaff';
+      let glowColor = '#00ffff';
+
+      if (isImmortalityActive) {
+          armorColor = '#ffd700';
+          glowColor = '#ffffff';
+      } else {
+          switch (currentSkin) {
+              case SkinType.NEON_BLUE:
+                  armorColor = '#0066ff';
+                  glowColor = '#00ffff';
+                  break;
+              case SkinType.NEON_GOLD:
+                  armorColor = '#ffaa00';
+                  glowColor = '#ffff00';
+                  break;
+              case SkinType.PHANTOM:
+                  armorColor = '#333333';
+                  glowColor = '#ff00ff';
+                  break;
+          }
+      }
       
       return {
           armorMaterial: new THREE.MeshStandardMaterial({ color: armorColor, roughness: 0.3, metalness: 0.8 }),
           jointMaterial: new THREE.MeshStandardMaterial({ color: '#111111', roughness: 0.7, metalness: 0.5 }),
           glowMaterial: new THREE.MeshBasicMaterial({ color: glowColor }),
-          shadowMaterial: new THREE.MeshBasicMaterial({ color: '#000000', opacity: 0.3, transparent: true })
+          shadowMaterial: new THREE.MeshBasicMaterial({ color: '#000000', opacity: 0.3, transparent: true }),
+          shieldMaterial: new THREE.MeshStandardMaterial({ 
+            color: '#4488ff', 
+            transparent: true, 
+            opacity: 0.15, 
+            wireframe: true,
+            emissive: '#00aaff',
+            emissiveIntensity: 1.5,
+            side: THREE.DoubleSide
+          })
       };
-  }, [isImmortalityActive]); // Only recreate if immortality state changes (for color shift)
+  }, [isImmortalityActive, currentSkin]);
 
   // --- Reset State on Game Start ---
   useEffect(() => {
@@ -158,6 +199,7 @@ export const Player: React.FC = () => {
   // --- Animation Loop ---
   useFrame((state, delta) => {
     if (!groupRef.current) return;
+    if (status === GameStatus.PAUSED) return;
     if (status !== GameStatus.PLAYING && status !== GameStatus.SHOP) return;
 
     // 1. Horizontal Position
@@ -233,6 +275,14 @@ export const Player: React.FC = () => {
         if (material && !Array.isArray(material)) {
             material.opacity = Math.max(0.1, 0.3 - (height / 2.5) * 0.2);
         }
+    }
+
+    // 5. Shield Pulse Animation
+    if (shieldRef.current && shieldActive) {
+        const pulse = 1.2 + Math.sin(state.clock.elapsedTime * 4) * 0.05;
+        shieldRef.current.scale.set(pulse, pulse, pulse);
+        shieldRef.current.rotation.y += delta * 0.5;
+        shieldRef.current.rotation.z += delta * 0.3;
     }
 
     // Invincibility / Immortality Effect
@@ -312,6 +362,24 @@ export const Player: React.FC = () => {
                  <mesh position={[0, -0.35, 0]} castShadow geometry={LEG_GEO} material={armorMaterial} />
             </group>
         </group>
+
+        {/* Shield Bubble */}
+        {shieldActive && (
+          <mesh ref={shieldRef} position={[0, 0.2, 0]}>
+            <sphereGeometry args={[1, 24, 24]} />
+            <primitive object={shieldMaterial} attach="material" />
+          </mesh>
+        )}
+
+        {/* Speed Boost Trail */}
+        {speedBoostActive && (
+          <group position={[0, 0.2, 0.5]}>
+            <mesh rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[0.5, 0.1, 2, 8]} />
+              <meshBasicMaterial color="#ffff00" transparent opacity={0.5} />
+            </mesh>
+          </group>
+        )}
       </group>
       
       <mesh ref={shadowRef} position={[0, 0.02, 0]} rotation={[-Math.PI/2, 0, 0]} geometry={SHADOW_GEO} material={shadowMaterial} />
