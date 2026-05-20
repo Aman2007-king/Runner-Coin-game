@@ -3,10 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 
-
 export class AudioController {
   ctx: AudioContext | null = null;
   masterGain: GainNode | null = null;
+  private _muted: boolean = false;
+  private _volume: number = 0.4;
 
   constructor() {
     // Lazy initialization
@@ -14,10 +15,9 @@ export class AudioController {
 
   init() {
     if (!this.ctx) {
-      // Support for standard and webkit prefixed AudioContext
       this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
       this.masterGain = this.ctx.createGain();
-      this.masterGain.gain.value = 0.4; // Master volume
+      this.masterGain.gain.value = this._muted ? 0 : this._volume;
       this.masterGain.connect(this.ctx.destination);
     }
     if (this.ctx.state === 'suspended') {
@@ -25,8 +25,28 @@ export class AudioController {
     }
   }
 
-  playGemCollect() {
+  /** Toggle or set mute state. Called from the store. */
+  setMuted(muted: boolean) {
+    this._muted = muted;
+    if (this.masterGain) {
+      this.masterGain.gain.value = muted ? 0 : this._volume;
+    }
+  }
+
+  /** Set master volume (0–1). Respects mute. */
+  setVolume(vol: number) {
+    this._volume = Math.max(0, Math.min(1, vol));
+    if (this.masterGain && !this._muted) {
+      this.masterGain.gain.value = this._volume;
+    }
+  }
+
+  private ensureReady() {
     if (!this.ctx || !this.masterGain) this.init();
+  }
+
+  playGemCollect() {
+    this.ensureReady();
     if (!this.ctx || !this.masterGain) return;
 
     const t = this.ctx.currentTime;
@@ -34,7 +54,6 @@ export class AudioController {
     const gain = this.ctx.createGain();
 
     osc.type = 'sine';
-    // High pitch "ding" with slight upward inflection
     osc.frequency.setValueAtTime(1200, t);
     osc.frequency.exponentialRampToValueAtTime(2000, t + 0.1);
 
@@ -43,89 +62,77 @@ export class AudioController {
 
     osc.connect(gain);
     gain.connect(this.masterGain);
-
     osc.start(t);
     osc.stop(t + 0.15);
   }
 
   playLetterCollect() {
-    if (!this.ctx || !this.masterGain) this.init();
+    this.ensureReady();
     if (!this.ctx || !this.masterGain) return;
 
     const t = this.ctx.currentTime;
-    
-    // Play a major chord (C Majorish: C5, E5, G5) for a rewarding sound
-    const freqs = [523.25, 659.25, 783.99]; 
-    
+    const freqs = [523.25, 659.25, 783.99];
+
     freqs.forEach((f, i) => {
-        const osc = this.ctx!.createOscillator();
-        const gain = this.ctx!.createGain();
-        
-        osc.type = 'triangle';
-        osc.frequency.value = f;
-        
-        // Stagger start times slightly for an arpeggio feel
-        const start = t + (i * 0.04);
-        const dur = 0.3;
+      const osc = this.ctx!.createOscillator();
+      const gain = this.ctx!.createGain();
 
-        gain.gain.setValueAtTime(0.3, start);
-        gain.gain.exponentialRampToValueAtTime(0.01, start + dur);
+      osc.type = 'triangle';
+      osc.frequency.value = f;
 
-        osc.connect(gain);
-        gain.connect(this.masterGain!);
-        
-        osc.start(start);
-        osc.stop(start + dur);
+      const start = t + i * 0.04;
+      const dur = 0.3;
+
+      gain.gain.setValueAtTime(0.3, start);
+      gain.gain.exponentialRampToValueAtTime(0.01, start + dur);
+
+      osc.connect(gain);
+      gain.connect(this.masterGain!);
+      osc.start(start);
+      osc.stop(start + dur);
     });
   }
 
   playJump(isDouble = false) {
-    if (!this.ctx || !this.masterGain) this.init();
+    this.ensureReady();
     if (!this.ctx || !this.masterGain) return;
 
     const t = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
 
-    // Sine wave for a smooth "whoop" sound
     osc.type = 'sine';
-    
-    // Pitch shift up for double jump
     const startFreq = isDouble ? 400 : 200;
     const endFreq = isDouble ? 800 : 450;
 
     osc.frequency.setValueAtTime(startFreq, t);
     osc.frequency.exponentialRampToValueAtTime(endFreq, t + 0.15);
 
-    // Lower volume for jump as it is a frequent action
     gain.gain.setValueAtTime(0.2, t);
     gain.gain.exponentialRampToValueAtTime(0.01, t + 0.15);
 
     osc.connect(gain);
     gain.connect(this.masterGain);
-
     osc.start(t);
     osc.stop(t + 0.15);
   }
 
   playDamage() {
-    if (!this.ctx || !this.masterGain) this.init();
+    this.ensureReady();
     if (!this.ctx || !this.masterGain) return;
 
     const t = this.ctx.currentTime;
-    
-    // 1. Noise buffer for "crunch/static"
-    const bufferSize = this.ctx.sampleRate * 0.3; // 0.3 seconds
+
+    const bufferSize = this.ctx.sampleRate * 0.3;
     const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
     const data = buffer.getChannelData(0);
     for (let i = 0; i < bufferSize; i++) {
-        data[i] = Math.random() * 2 - 1;
+      data[i] = Math.random() * 2 - 1;
     }
 
     const noise = this.ctx.createBufferSource();
     noise.buffer = buffer;
-    
-    // 2. Low oscillator for "thud/impact"
+
     const osc = this.ctx.createOscillator();
     osc.type = 'sawtooth';
     osc.frequency.setValueAtTime(100, t);
@@ -141,7 +148,6 @@ export class AudioController {
 
     osc.connect(oscGain);
     oscGain.connect(this.masterGain);
-    
     noise.connect(noiseGain);
     noiseGain.connect(this.masterGain);
 
@@ -152,7 +158,7 @@ export class AudioController {
   }
 
   playPowerUp() {
-    if (!this.ctx || !this.masterGain) this.init();
+    this.ensureReady();
     if (!this.ctx || !this.masterGain) return;
 
     const t = this.ctx.currentTime;
@@ -169,45 +175,37 @@ export class AudioController {
 
     osc.connect(gain);
     gain.connect(this.masterGain);
-
     osc.start(t);
     osc.stop(t + 0.5);
   }
 
   playShieldActivate() {
-    if (!this.ctx || !this.masterGain) this.init();
+    this.ensureReady();
     if (!this.ctx || !this.masterGain) return;
 
     const t = this.ctx.currentTime;
-    
-    // Create a "shimmering" rising sound
-    const count = 3;
-    for (let i = 0; i < count; i++) {
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        
-        osc.type = 'sine';
-        const startFreq = 400 + (i * 100);
-        const endFreq = 800 + (i * 200);
-        
-        osc.frequency.setValueAtTime(startFreq, t + (i * 0.05));
-        osc.frequency.exponentialRampToValueAtTime(endFreq, t + 0.3 + (i * 0.05));
-        
-        gain.gain.setValueAtTime(0.2, t + (i * 0.05));
-        gain.gain.exponentialRampToValueAtTime(0.01, t + 0.4 + (i * 0.05));
-        
-        osc.connect(gain);
-        gain.connect(this.masterGain);
-        
-        osc.start(t + (i * 0.05));
-        osc.stop(t + 0.4 + (i * 0.05));
+    for (let i = 0; i < 3; i++) {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(400 + i * 100, t + i * 0.05);
+      osc.frequency.exponentialRampToValueAtTime(800 + i * 200, t + 0.3 + i * 0.05);
+
+      gain.gain.setValueAtTime(0.2, t + i * 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.01, t + 0.4 + i * 0.05);
+
+      osc.connect(gain);
+      gain.connect(this.masterGain);
+      osc.start(t + i * 0.05);
+      osc.stop(t + 0.4 + i * 0.05);
     }
   }
 
-  // Simple rhythmic synth pulse for music
-  musicInterval: any = null;
+  musicInterval: ReturnType<typeof setInterval> | null = null;
+
   startMusic() {
-    if (!this.ctx || !this.masterGain) this.init();
+    this.ensureReady();
     if (this.musicInterval) return;
 
     let beat = 0;
@@ -218,8 +216,7 @@ export class AudioController {
       const gain = this.ctx.createGain();
 
       osc.type = 'sawtooth';
-      // Bass pulse
-      const freq = beat % 4 === 0 ? 55 : 41.2; // A1 or E1
+      const freq = beat % 4 === 0 ? 55 : 41.2;
       osc.frequency.setValueAtTime(freq, t);
       osc.frequency.exponentialRampToValueAtTime(freq / 2, t + 0.2);
 
@@ -228,11 +225,10 @@ export class AudioController {
 
       osc.connect(gain);
       gain.connect(this.masterGain);
-
       osc.start(t);
       osc.stop(t + 0.2);
       beat++;
-    }, 250); // 120 BPM
+    }, 250);
   }
 
   stopMusic() {
