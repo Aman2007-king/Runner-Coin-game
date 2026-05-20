@@ -1,17 +1,13 @@
 /**
- * @license
- * SPDX-License-Identifier: Apache-2.0
-*/
-
+ * @license SPDX-License-Identifier: Apache-2.0
+ */
 export class AudioController {
-  ctx: AudioContext | null = null;
-  masterGain: GainNode | null = null;
-  private _muted: boolean = false;
-  private _volume: number = 0.4;
-
-  constructor() {
-    // Lazy initialization
-  }
+  ctx:        AudioContext | null = null;
+  masterGain: GainNode     | null = null;
+  private _muted  = false;
+  private _volume = 0.35;
+  musicInterval:  ReturnType<typeof setInterval> | null = null;
+  private _musicBeat = 0;
 
   init() {
     if (!this.ctx) {
@@ -20,222 +16,141 @@ export class AudioController {
       this.masterGain.gain.value = this._muted ? 0 : this._volume;
       this.masterGain.connect(this.ctx.destination);
     }
-    if (this.ctx.state === 'suspended') {
-      this.ctx.resume().catch(() => {});
-    }
+    if (this.ctx.state === 'suspended') this.ctx.resume().catch(()=>{});
   }
 
-  /** Toggle or set mute state. Called from the store. */
-  setMuted(muted: boolean) {
-    this._muted = muted;
-    if (this.masterGain) {
-      this.masterGain.gain.value = muted ? 0 : this._volume;
-    }
+  setMuted(m: boolean) {
+    this._muted = m;
+    if (this.masterGain) this.masterGain.gain.value = m ? 0 : this._volume;
   }
 
-  /** Set master volume (0–1). Respects mute. */
-  setVolume(vol: number) {
-    this._volume = Math.max(0, Math.min(1, vol));
-    if (this.masterGain && !this._muted) {
-      this.masterGain.gain.value = this._volume;
-    }
-  }
-
-  private ensureReady() {
+  private ready() {
     if (!this.ctx || !this.masterGain) this.init();
+    return !!(this.ctx && this.masterGain);
   }
 
   playGemCollect() {
-    this.ensureReady();
-    if (!this.ctx || !this.masterGain) return;
-
-    const t = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(1200, t);
-    osc.frequency.exponentialRampToValueAtTime(2000, t + 0.1);
-
-    gain.gain.setValueAtTime(0.5, t);
-    gain.gain.exponentialRampToValueAtTime(0.01, t + 0.15);
-
-    osc.connect(gain);
-    gain.connect(this.masterGain);
-    osc.start(t);
-    osc.stop(t + 0.15);
+    if (!this.ready()) return;
+    const t = this.ctx!.currentTime;
+    const o = this.ctx!.createOscillator();
+    const g = this.ctx!.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(1200, t);
+    o.frequency.exponentialRampToValueAtTime(2200, t+0.1);
+    g.gain.setValueAtTime(0.4, t);
+    g.gain.exponentialRampToValueAtTime(0.01, t+0.15);
+    o.connect(g); g.connect(this.masterGain!); o.start(t); o.stop(t+0.15);
   }
 
   playLetterCollect() {
-    this.ensureReady();
-    if (!this.ctx || !this.masterGain) return;
-
-    const t = this.ctx.currentTime;
-    const freqs = [523.25, 659.25, 783.99];
-
-    freqs.forEach((f, i) => {
-      const osc = this.ctx!.createOscillator();
-      const gain = this.ctx!.createGain();
-
-      osc.type = 'triangle';
-      osc.frequency.value = f;
-
-      const start = t + i * 0.04;
-      const dur = 0.3;
-
-      gain.gain.setValueAtTime(0.3, start);
-      gain.gain.exponentialRampToValueAtTime(0.01, start + dur);
-
-      osc.connect(gain);
-      gain.connect(this.masterGain!);
-      osc.start(start);
-      osc.stop(start + dur);
+    if (!this.ready()) return;
+    [523,659,784].forEach((f,i) => {
+      const t = this.ctx!.currentTime + i*0.04;
+      const o = this.ctx!.createOscillator();
+      const g = this.ctx!.createGain();
+      o.type = 'triangle'; o.frequency.value = f;
+      g.gain.setValueAtTime(0.25, t); g.gain.exponentialRampToValueAtTime(0.01, t+0.3);
+      o.connect(g); g.connect(this.masterGain!); o.start(t); o.stop(t+0.3);
     });
   }
 
   playJump(isDouble = false) {
-    this.ensureReady();
-    if (!this.ctx || !this.masterGain) return;
+    if (!this.ready()) return;
+    const t = this.ctx!.currentTime;
+    const o = this.ctx!.createOscillator();
+    const g = this.ctx!.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(isDouble ? 400 : 200, t);
+    o.frequency.exponentialRampToValueAtTime(isDouble ? 900 : 500, t+0.15);
+    g.gain.setValueAtTime(0.18, t); g.gain.exponentialRampToValueAtTime(0.01, t+0.15);
+    o.connect(g); g.connect(this.masterGain!); o.start(t); o.stop(t+0.15);
+  }
 
-    const t = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
+  playSlide() {
+    if (!this.ready()) return;
+    const t = this.ctx!.currentTime;
+    const o = this.ctx!.createOscillator();
+    const g = this.ctx!.createGain();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(300, t); o.frequency.exponentialRampToValueAtTime(80, t+0.25);
+    g.gain.setValueAtTime(0.2, t); g.gain.exponentialRampToValueAtTime(0.01, t+0.25);
+    o.connect(g); g.connect(this.masterGain!); o.start(t); o.stop(t+0.25);
+  }
 
-    osc.type = 'sine';
-    const startFreq = isDouble ? 400 : 200;
-    const endFreq = isDouble ? 800 : 450;
-
-    osc.frequency.setValueAtTime(startFreq, t);
-    osc.frequency.exponentialRampToValueAtTime(endFreq, t + 0.15);
-
-    gain.gain.setValueAtTime(0.2, t);
-    gain.gain.exponentialRampToValueAtTime(0.01, t + 0.15);
-
-    osc.connect(gain);
-    gain.connect(this.masterGain);
-    osc.start(t);
-    osc.stop(t + 0.15);
+  playBoost() {
+    if (!this.ready()) return;
+    const t = this.ctx!.currentTime;
+    const o = this.ctx!.createOscillator();
+    const g = this.ctx!.createGain();
+    o.type = 'square';
+    o.frequency.setValueAtTime(200, t); o.frequency.exponentialRampToValueAtTime(1600, t+0.3);
+    g.gain.setValueAtTime(0.3, t); g.gain.exponentialRampToValueAtTime(0.01, t+0.35);
+    o.connect(g); g.connect(this.masterGain!); o.start(t); o.stop(t+0.35);
   }
 
   playDamage() {
-    this.ensureReady();
-    if (!this.ctx || !this.masterGain) return;
-
-    const t = this.ctx.currentTime;
-
-    const bufferSize = this.ctx.sampleRate * 0.3;
-    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      data[i] = Math.random() * 2 - 1;
-    }
-
-    const noise = this.ctx.createBufferSource();
-    noise.buffer = buffer;
-
-    const osc = this.ctx.createOscillator();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(100, t);
-    osc.frequency.exponentialRampToValueAtTime(20, t + 0.3);
-
-    const oscGain = this.ctx.createGain();
-    oscGain.gain.setValueAtTime(0.6, t);
-    oscGain.gain.exponentialRampToValueAtTime(0.01, t + 0.3);
-
-    const noiseGain = this.ctx.createGain();
-    noiseGain.gain.setValueAtTime(0.5, t);
-    noiseGain.gain.exponentialRampToValueAtTime(0.01, t + 0.2);
-
-    osc.connect(oscGain);
-    oscGain.connect(this.masterGain);
-    noise.connect(noiseGain);
-    noiseGain.connect(this.masterGain);
-
-    osc.start(t);
-    osc.stop(t + 0.3);
-    noise.start(t);
-    noise.stop(t + 0.3);
+    if (!this.ready()) return;
+    const t = this.ctx!.currentTime;
+    const o = this.ctx!.createOscillator();
+    const g = this.ctx!.createGain();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(100, t); o.frequency.exponentialRampToValueAtTime(20, t+0.3);
+    g.gain.setValueAtTime(0.5, t); g.gain.exponentialRampToValueAtTime(0.01, t+0.3);
+    o.connect(g); g.connect(this.masterGain!); o.start(t); o.stop(t+0.3);
   }
 
   playPowerUp() {
-    this.ensureReady();
-    if (!this.ctx || !this.masterGain) return;
-
-    const t = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-
-    osc.type = 'square';
-    osc.frequency.setValueAtTime(400, t);
-    osc.frequency.exponentialRampToValueAtTime(1200, t + 0.2);
-    osc.frequency.exponentialRampToValueAtTime(800, t + 0.4);
-
-    gain.gain.setValueAtTime(0.3, t);
-    gain.gain.exponentialRampToValueAtTime(0.01, t + 0.5);
-
-    osc.connect(gain);
-    gain.connect(this.masterGain);
-    osc.start(t);
-    osc.stop(t + 0.5);
+    if (!this.ready()) return;
+    const t = this.ctx!.currentTime;
+    const o = this.ctx!.createOscillator();
+    const g = this.ctx!.createGain();
+    o.type = 'square';
+    o.frequency.setValueAtTime(400, t);
+    o.frequency.exponentialRampToValueAtTime(1200, t+0.2);
+    o.frequency.exponentialRampToValueAtTime(800, t+0.4);
+    g.gain.setValueAtTime(0.25, t); g.gain.exponentialRampToValueAtTime(0.01, t+0.5);
+    o.connect(g); g.connect(this.masterGain!); o.start(t); o.stop(t+0.5);
   }
 
   playShieldActivate() {
-    this.ensureReady();
-    if (!this.ctx || !this.masterGain) return;
-
-    const t = this.ctx.currentTime;
+    if (!this.ready()) return;
     for (let i = 0; i < 3; i++) {
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(400 + i * 100, t + i * 0.05);
-      osc.frequency.exponentialRampToValueAtTime(800 + i * 200, t + 0.3 + i * 0.05);
-
-      gain.gain.setValueAtTime(0.2, t + i * 0.05);
-      gain.gain.exponentialRampToValueAtTime(0.01, t + 0.4 + i * 0.05);
-
-      osc.connect(gain);
-      gain.connect(this.masterGain);
-      osc.start(t + i * 0.05);
-      osc.stop(t + 0.4 + i * 0.05);
+      const t = this.ctx!.currentTime + i*0.05;
+      const o = this.ctx!.createOscillator();
+      const g = this.ctx!.createGain();
+      o.type = 'sine'; o.frequency.setValueAtTime(400+i*100, t);
+      o.frequency.exponentialRampToValueAtTime(800+i*200, t+0.3);
+      g.gain.setValueAtTime(0.18, t); g.gain.exponentialRampToValueAtTime(0.01, t+0.4);
+      o.connect(g); g.connect(this.masterGain!); o.start(t); o.stop(t+0.4);
     }
   }
 
-  musicInterval: ReturnType<typeof setInterval> | null = null;
-
-  startMusic() {
-    this.ensureReady();
+  // Adaptive music — BPM scales with speed
+  startMusic(bpm = 140) {
     if (this.musicInterval) return;
-
-    let beat = 0;
+    this._musicBeat = 0;
+    const ms = (60000 / bpm) / 2;
     this.musicInterval = setInterval(() => {
       if (!this.ctx || !this.masterGain) return;
       const t = this.ctx.currentTime;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-
-      osc.type = 'sawtooth';
-      const freq = beat % 4 === 0 ? 55 : 41.2;
-      osc.frequency.setValueAtTime(freq, t);
-      osc.frequency.exponentialRampToValueAtTime(freq / 2, t + 0.2);
-
-      gain.gain.setValueAtTime(0.15, t);
-      gain.gain.exponentialRampToValueAtTime(0.01, t + 0.2);
-
-      osc.connect(gain);
-      gain.connect(this.masterGain);
-      osc.start(t);
-      osc.stop(t + 0.2);
-      beat++;
-    }, 250);
+      const o = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      o.type = 'sawtooth';
+      const freq = this._musicBeat % 4 === 0 ? 55 : this._musicBeat % 2 === 0 ? 41.2 : 49;
+      o.frequency.setValueAtTime(freq, t); o.frequency.exponentialRampToValueAtTime(freq/2, t+0.18);
+      g.gain.setValueAtTime(0.12, t); g.gain.exponentialRampToValueAtTime(0.01, t+0.18);
+      o.connect(g); g.connect(this.masterGain); o.start(t); o.stop(t+0.18);
+      this._musicBeat++;
+    }, ms);
   }
 
   stopMusic() {
-    if (this.musicInterval) {
-      clearInterval(this.musicInterval);
-      this.musicInterval = null;
-    }
+    if (this.musicInterval) { clearInterval(this.musicInterval); this.musicInterval = null; }
+  }
+
+  updateMusicBPM(speed: number, baseSpeed: number) {
+    const bpm = Math.min(220, Math.round(140 * (speed / baseSpeed)));
+    this.stopMusic(); this.startMusic(bpm);
   }
 }
 
