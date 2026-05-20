@@ -1,596 +1,457 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
-*/
+bash
 
+cat > /mnt/user-data/outputs/Runner-Coin-game-fixed/components/UI/HUD.tsx << 'HUDEOF'
+/**
+ * @license SPDX-License-Identifier: Apache-2.0
+ */
 import React, { useState, useEffect } from 'react';
 import {
-  Heart, Zap, Trophy, MapPin, Diamond, Rocket,
-  ArrowUpCircle, Shield, Activity, PlusCircle,
-  Play, Palette, List, Pause, Volume2, VolumeX,
+  Heart, Zap, Trophy, MapPin, Diamond, Rocket, ArrowUpCircle,
+  Shield, Activity, PlusCircle, Play, Palette, List, Pause,
+  Volume2, VolumeX, Star, ChevronUp, Award, Target, CheckCircle2,
 } from 'lucide-react';
 import { useStore } from '../../store';
-import { GameStatus, GEMINI_COLORS, ShopItem, RUN_SPEED_BASE, SkinType } from '../../types';
+import {
+  GameStatus, GEMINI_COLORS, RUN_SPEED_BASE, SkinType, BiomeType,
+  BIOME_BY_LEVEL, BIOME_COLORS,
+} from '../../types';
 import { audio } from '../System/Audio';
-import { saveHighScore, getLeaderboard } from '../../firebase';
 
-// Available Shop Items
-const SHOP_ITEMS: ShopItem[] = [
-  {
-    id: 'DOUBLE_JUMP',
-    name: 'DOUBLE JUMP',
-    description: 'Jump again in mid-air. Essential for high obstacles.',
-    cost: 1000,
-    icon: ArrowUpCircle,
-    oneTime: true,
-  },
-  {
-    id: 'MAX_LIFE',
-    name: 'MAX LIFE UP',
-    description: 'Permanently adds a heart slot and heals you.',
-    cost: 1500,
-    icon: Activity,
-  },
-  {
-    id: 'HEAL',
-    name: 'REPAIR KIT',
-    description: 'Restores 1 Life point instantly.',
-    cost: 1000,
-    icon: PlusCircle,
-  },
-  {
-    id: 'IMMORTAL',
-    name: 'IMMORTALITY',
-    description: 'Unlock Ability: Press Space/Tap to be invincible for 5s.',
-    cost: 3000,
-    icon: Shield,
-    oneTime: true,
-  },
-];
-
-// ─── Mute Button ─────────────────────────────────────────────────────────────
-const MuteButton: React.FC<{ className?: string }> = ({ className = '' }) => {
+// ─── Mute button ──────────────────────────────────────────────────────────────
+const MuteBtn: React.FC = () => {
   const { isMuted, toggleMute } = useStore();
   return (
-    <button
-      onClick={toggleMute}
-      title={isMuted ? 'Unmute' : 'Mute'}
-      className={`p-2 bg-black/50 border border-white/10 rounded-lg hover:bg-white/10 transition-all pointer-events-auto ${className}`}
-    >
-      {isMuted
-        ? <VolumeX className="text-gray-400 w-5 h-5" />
-        : <Volume2 className="text-white w-5 h-5" />}
+    <button onClick={toggleMute} className="p-2 bg-black/50 border border-white/10 rounded-lg hover:bg-white/10 transition-all pointer-events-auto">
+      {isMuted ? <VolumeX className="text-gray-400 w-5 h-5" /> : <Volume2 className="text-white w-5 h-5" />}
     </button>
   );
 };
 
-// ─── Shop Screen ─────────────────────────────────────────────────────────────
-const ShopScreen: React.FC = () => {
-  const { score, buyItem, closeShop, hasDoubleJump, hasImmortality } = useStore();
-
-  // FIX: include hasDoubleJump / hasImmortality in deps so the filter is fresh
-  const items = React.useMemo(() => {
-    let pool = SHOP_ITEMS.filter(item => {
-      if (item.id === 'DOUBLE_JUMP' && hasDoubleJump) return false;
-      if (item.id === 'IMMORTAL'    && hasImmortality)  return false;
-      return true;
-    });
-    pool = [...pool].sort(() => 0.5 - Math.random());
-    return pool.slice(0, 3);
-  }, [hasDoubleJump, hasImmortality]);
-
+// ─── XP bar ───────────────────────────────────────────────────────────────────
+const XPBar: React.FC = () => {
+  const { xp, playerLevel } = useStore();
+  const needed = playerLevel * playerLevel * 500;
+  const prev   = (playerLevel-1)*(playerLevel-1)*500;
+  const pct    = Math.min(100, Math.round(((xp - prev) / (needed - prev)) * 100));
   return (
-    <div className="absolute inset-0 bg-black/90 z-[100] text-white pointer-events-auto backdrop-blur-md overflow-y-auto">
-      <div className="flex flex-col items-center justify-center min-h-full py-8 px-4">
-        <div className="flex items-center justify-between w-full max-w-4xl mb-2">
-          <h2 className="text-3xl md:text-4xl font-black text-cyan-400 font-cyber tracking-widest">CYBER SHOP</h2>
-          <MuteButton />
-        </div>
-
-        <div className="flex items-center text-yellow-400 mb-6 md:mb-8">
-          <span className="text-base md:text-lg mr-2">AVAILABLE CREDITS:</span>
-          <span className="text-xl md:text-2xl font-bold">{score.toLocaleString()}</span>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 max-w-4xl w-full mb-8">
-          {items.map(item => {
-            const Icon = item.icon;
-            const canAfford = score >= item.cost;
-            return (
-              <div
-                key={item.id}
-                className="bg-gray-900/80 border border-gray-700 p-4 md:p-6 rounded-xl flex flex-col items-center text-center hover:border-cyan-500 transition-colors"
-              >
-                <div className="bg-gray-800 p-3 md:p-4 rounded-full mb-3 md:mb-4">
-                  <Icon className="w-6 h-6 md:w-8 md:h-8 text-cyan-400" />
-                </div>
-                <h3 className="text-lg md:text-xl font-bold mb-2">{item.name}</h3>
-                <p className="text-gray-400 text-xs md:text-sm mb-4 h-10 md:h-12 flex items-center justify-center">
-                  {item.description}
-                </p>
-                <button
-                  onClick={() => buyItem(item.id as any, item.cost)}
-                  disabled={!canAfford}
-                  className={`px-4 md:px-6 py-2 rounded font-bold w-full text-sm md:text-base ${
-                    canAfford
-                      ? 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:brightness-110'
-                      : 'bg-gray-700 cursor-not-allowed opacity-50'
-                  }`}
-                >
-                  {item.cost} GEMS
-                </button>
-              </div>
-            );
-          })}
-        </div>
-
-        <button
-          onClick={closeShop}
-          className="flex items-center px-8 md:px-10 py-3 md:py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold text-lg md:text-xl rounded hover:scale-105 transition-all shadow-[0_0_20px_rgba(255,0,255,0.4)]"
-        >
-          RESUME MISSION <Play className="ml-2 w-5 h-5" fill="white" />
-        </button>
+    <div className="flex items-center gap-2 bg-black/50 px-3 py-1 rounded-full border border-white/10">
+      <Star className="text-yellow-400 w-4 h-4" />
+      <span className="text-yellow-300 text-xs font-bold font-mono">Lv.{playerLevel}</span>
+      <div className="w-20 h-2 bg-gray-800 rounded-full overflow-hidden">
+        <div className="h-full bg-gradient-to-r from-yellow-500 to-orange-400 transition-all duration-500" style={{ width: `${pct}%` }} />
       </div>
+      <span className="text-gray-400 text-xs font-mono">{pct}%</span>
     </div>
   );
 };
 
-// ─── Pause Screen ─────────────────────────────────────────────────────────────
-const PauseScreen: React.FC = () => {
-  const { resumeGame, restartGame, setStatus } = useStore();
+// ─── Combo display ────────────────────────────────────────────────────────────
+const ComboDisplay: React.FC = () => {
+  const { comboMultiplier, comboStreak } = useStore();
+  if (comboMultiplier < 2) return null;
   return (
-    <div className="absolute inset-0 bg-black/80 z-[200] text-white pointer-events-auto backdrop-blur-md flex flex-col items-center justify-center p-8">
-      <div className="absolute top-4 right-4">
-        <MuteButton />
-      </div>
-      <h2 className="text-5xl font-black text-cyan-400 mb-12 font-cyber tracking-widest uppercase">
-        Mission Paused
-      </h2>
-      <div className="flex flex-col space-y-6 w-full max-w-xs">
-        <button
-          onClick={resumeGame}
-          className="w-full py-4 bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-black text-xl rounded-xl hover:scale-105 transition-all shadow-[0_0_20px_rgba(0,255,255,0.3)] flex items-center justify-center"
-        >
-          <Play className="mr-3 fill-white" /> RESUME
-        </button>
-        <button
-          onClick={restartGame}
-          className="w-full py-4 bg-white/10 border border-white/20 text-white font-bold text-lg rounded-xl hover:bg-white/20 transition-all"
-        >
-          RESTART MISSION
-        </button>
-        <button
-          onClick={() => setStatus(GameStatus.MENU)}
-          className="w-full py-4 text-gray-400 hover:text-white transition-all font-mono text-sm tracking-widest"
-        >
-          [ ABORT MISSION ]
-        </button>
-      </div>
+    <div className={`text-center animate-pulse ${comboMultiplier >= 8 ? 'text-red-400' : comboMultiplier >= 5 ? 'text-orange-400' : 'text-yellow-400'}`}>
+      <div className="text-2xl font-black font-cyber drop-shadow-[0_0_8px_currentColor]">×{comboMultiplier} COMBO</div>
+      <div className="text-xs font-mono text-gray-400">{comboStreak} streak</div>
     </div>
   );
 };
 
-// ─── Skin Shop ────────────────────────────────────────────────────────────────
-const SkinShop: React.FC<{ onClose: () => void }> = ({ onClose }) => {
-  const { gemsCollected, currentSkin, unlockedSkins, setSkin, unlockSkin } = useStore();
-
-  const skins = [
-    { type: SkinType.DEFAULT,   name: 'CLASSIC NEON', cost: 0,    color: '#00aaff' },
-    { type: SkinType.NEON_BLUE, name: 'DEEP BLUE',    cost: 500,  color: '#0066ff' },
-    { type: SkinType.NEON_GOLD, name: 'CYBER GOLD',   cost: 1000, color: '#ffaa00' },
-    { type: SkinType.PHANTOM,   name: 'PHANTOM',      cost: 2000, color: '#ff00ff' },
-  ];
-
+// ─── Achievement toast ────────────────────────────────────────────────────────
+const AchievementToast: React.FC = () => {
+  const { newAchievements, achievements, dismissAchievements } = useStore();
+  const items = achievements.filter(a => newAchievements.includes(a.id));
+  if (!items.length) return null;
   return (
-    <div className="absolute inset-0 bg-black/95 z-[110] text-white pointer-events-auto backdrop-blur-lg flex flex-col items-center justify-center p-8">
-      <h2 className="text-4xl font-black text-pink-500 mb-8 font-cyber tracking-widest">SKIN PROTOCOLS</h2>
-      <div className="flex items-center text-cyan-400 mb-8">
-        <Diamond className="mr-2" />
-        <span className="text-2xl font-bold">{gemsCollected}</span>
-      </div>
+    <div className="absolute bottom-24 left-1/2 -translate-x-1/2 flex flex-col gap-2 z-[300] pointer-events-auto">
+      {items.map(a => (
+        <div key={a.id} onClick={dismissAchievements}
+          className="flex items-center gap-3 bg-yellow-900/90 border border-yellow-500 px-4 py-3 rounded-xl shadow-[0_0_20px_rgba(255,215,0,0.3)] cursor-pointer">
+          <span className="text-2xl">{a.icon}</span>
+          <div>
+            <div className="text-yellow-300 font-bold text-sm">Achievement Unlocked!</div>
+            <div className="text-white font-black">{a.label}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-6 w-full max-w-4xl mb-12">
-        {skins.map(skin => {
-          const isUnlocked = unlockedSkins.includes(skin.type);
-          const isSelected = currentSkin === skin.type;
-          const canAfford  = gemsCollected >= skin.cost;
-
+// ─── Daily missions panel ─────────────────────────────────────────────────────
+const MissionsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const { dailyMissions, claimMissionReward } = useStore();
+  return (
+    <div className="absolute inset-0 bg-black/95 z-[110] text-white pointer-events-auto flex flex-col items-center justify-center p-6">
+      <h2 className="text-3xl font-black text-cyan-400 mb-6 tracking-widest">DAILY MISSIONS</h2>
+      <div className="w-full max-w-md space-y-4 mb-8">
+        {dailyMissions.map(m => {
+          const pct    = Math.min(100, Math.round((m.current / m.target) * 100));
+          const claimed = m.current === -1;
           return (
-            <div
-              key={skin.type}
-              className={`p-6 rounded-2xl border-2 transition-all flex flex-col items-center ${
-                isSelected ? 'border-white bg-white/10' : 'border-gray-800 bg-gray-900'
-              }`}
-            >
-              <div className="w-16 h-16 rounded-full mb-4 shadow-lg" style={{ backgroundColor: skin.color }} />
-              <h3 className="font-bold mb-4 text-center">{skin.name}</h3>
-              {isUnlocked ? (
-                <button
-                  onClick={() => setSkin(skin.type)}
-                  className={`w-full py-2 rounded font-bold ${isSelected ? 'bg-white text-black' : 'bg-gray-700 text-white'}`}
-                >
-                  {isSelected ? 'ACTIVE' : 'SELECT'}
-                </button>
-              ) : (
-                <button
-                  onClick={() => unlockSkin(skin.type, skin.cost)}
-                  disabled={!canAfford}
-                  className={`w-full py-2 rounded font-bold ${canAfford ? 'bg-pink-600' : 'bg-gray-800 text-gray-500'}`}
-                >
-                  {skin.cost} GEMS
-                </button>
-              )}
+            <div key={m.id} className="bg-gray-900 border border-gray-700 rounded-xl p-4">
+              <div className="flex justify-between items-start mb-2">
+                <div>
+                  <div className="font-bold text-lg">{m.label}</div>
+                  <div className="text-gray-400 text-sm">
+                    {m.type === 'gems'     ? `Collect ${m.target} gems`    :
+                     m.type === 'distance' ? `Run ${m.target} light years` :
+                     m.type === 'letters' ? `Collect ${m.target} letters` :
+                                            'Complete a run without damage'}
+                  </div>
+                </div>
+                <div className="text-yellow-400 font-bold flex items-center gap-1">
+                  <Diamond className="w-4 h-4" />{m.reward}
+                </div>
+              </div>
+              <div className="h-2 bg-gray-700 rounded-full overflow-hidden mb-2">
+                <div className="h-full bg-cyan-500 transition-all" style={{ width: `${pct}%` }} />
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-gray-500">{claimed ? 'Claimed' : m.completed ? 'Complete!' : `${m.current}/${m.target}`}</span>
+                {m.completed && !claimed && (
+                  <button onClick={() => claimMissionReward(m.id)}
+                    className="flex items-center gap-1 bg-yellow-600 px-3 py-1 rounded font-bold text-sm hover:bg-yellow-500">
+                    <CheckCircle2 className="w-4 h-4" /> Claim
+                  </button>
+                )}
+                {claimed && <CheckCircle2 className="text-green-400 w-5 h-5" />}
+              </div>
             </div>
           );
         })}
       </div>
-
-      <button onClick={onClose} className="px-12 py-4 bg-white text-black font-black rounded-full hover:scale-105 transition-all">
-        BACK TO MENU
-      </button>
+      <button onClick={onClose} className="px-10 py-3 bg-white text-black font-black rounded-full hover:scale-105 transition-all">BACK</button>
     </div>
   );
 };
 
-// ─── Leaderboard Modal ────────────────────────────────────────────────────────
-const LeaderboardModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
-  const [scores, setScores]   = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState<string | null>(null);
+// ─── Achievements panel ───────────────────────────────────────────────────────
+const AchievementsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const { achievements } = useStore();
+  return (
+    <div className="absolute inset-0 bg-black/95 z-[110] text-white pointer-events-auto flex flex-col items-center justify-center p-6">
+      <h2 className="text-3xl font-black text-yellow-400 mb-6 tracking-widest">ACHIEVEMENTS</h2>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-lg mb-8 overflow-y-auto max-h-[60vh]">
+        {achievements.map(a => (
+          <div key={a.id} className={`p-3 rounded-xl border flex items-center gap-3 ${a.unlocked ? 'border-yellow-500 bg-yellow-900/20' : 'border-gray-800 bg-gray-900/50 opacity-50'}`}>
+            <span className="text-2xl">{a.icon}</span>
+            <div>
+              <div className="font-bold text-sm">{a.label}</div>
+              <div className="text-gray-400 text-xs">{a.description}</div>
+            </div>
+            {a.unlocked && <CheckCircle2 className="ml-auto text-yellow-400 w-5 h-5 flex-shrink-0" />}
+          </div>
+        ))}
+      </div>
+      <button onClick={onClose} className="px-10 py-3 bg-white text-black font-black rounded-full hover:scale-105 transition-all">BACK</button>
+    </div>
+  );
+};
 
-  useEffect(() => {
-    let mounted = true;
-    // FIX: catch Firebase errors gracefully instead of letting them propagate
-    getLeaderboard()
-      .then(data => { if (mounted) { setScores(data); setLoading(false); } })
-      .catch(err  => {
-        console.warn('Leaderboard fetch failed:', err);
-        if (mounted) { setError('Could not load rankings. Check your connection.'); setLoading(false); }
-      });
-    return () => { mounted = false; };
-  }, []);
+// ─── Shop screen ──────────────────────────────────────────────────────────────
+const ShopScreen: React.FC = () => {
+  const { score, buyItem, closeShop, hasDoubleJump, hasImmortality } = useStore();
+  const ITEMS = [
+    { id:'DOUBLE_JUMP', name:'DOUBLE JUMP',  desc:'Jump again mid-air',          cost:1000, icon:ArrowUpCircle, one:true  },
+    { id:'MAX_LIFE',    name:'MAX LIFE UP',  desc:'Adds a permanent heart slot', cost:1500, icon:Activity,      one:false },
+    { id:'HEAL',        name:'REPAIR KIT',   desc:'Restores 1 life immediately', cost:800,  icon:PlusCircle,    one:false },
+    { id:'IMMORTAL',    name:'IMMORTALITY',  desc:'5s invincibility on demand',  cost:3000, icon:Shield,        one:true  },
+  ].filter(i => !(i.id==='DOUBLE_JUMP'&&hasDoubleJump) && !(i.id==='IMMORTAL'&&hasImmortality))
+   .sort(()=>Math.random()-.5).slice(0,3);
 
   return (
-    <div className="absolute inset-0 bg-black/95 z-[110] text-white pointer-events-auto backdrop-blur-lg flex flex-col items-center justify-center p-8">
-      <h2 className="text-4xl font-black text-yellow-500 mb-8 font-cyber tracking-widest">GLOBAL RANKINGS</h2>
-
-      <div className="w-full max-w-md bg-gray-900/50 rounded-2xl border border-gray-800 p-6 mb-8 overflow-y-auto max-h-[60vh]">
-        {loading ? (
-          <div className="flex justify-center py-12">
-            <Zap className="animate-spin text-yellow-500" />
-          </div>
-        ) : error ? (
-          <p className="text-center text-red-400 font-mono text-sm py-8">{error}</p>
-        ) : scores.length === 0 ? (
-          <p className="text-center text-gray-500 font-mono text-sm py-8">No scores yet. Be the first!</p>
-        ) : (
-          <div className="space-y-4">
-            {scores.map((s, i) => (
-              <div key={i} className="flex justify-between items-center p-3 border-b border-gray-800">
-                <div className="flex items-center">
-                  <span className={`w-8 font-bold ${i < 3 ? 'text-yellow-400' : 'text-gray-500'}`}>{i + 1}</span>
-                  <span className="font-medium">{s.name}</span>
-                </div>
-                <span className="font-mono text-cyan-400">{s.score.toLocaleString()}</span>
-              </div>
-            ))}
-          </div>
-        )}
+    <div className="absolute inset-0 bg-black/90 z-[100] text-white pointer-events-auto backdrop-blur-md flex flex-col items-center justify-center p-6">
+      <div className="flex items-center justify-between w-full max-w-2xl mb-2">
+        <h2 className="text-3xl font-black text-cyan-400 tracking-widest">CYBER SHOP</h2>
+        <MuteBtn />
       </div>
-
-      <button onClick={onClose} className="px-12 py-4 bg-white text-black font-black rounded-full hover:scale-105 transition-all">
-        CLOSE
+      <div className="flex items-center text-yellow-400 mb-6">
+        <span className="mr-2">CREDITS:</span>
+        <span className="text-2xl font-bold">{score.toLocaleString()}</span>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl w-full mb-8">
+        {ITEMS.map(item => {
+          const Icon = item.icon;
+          const can  = score >= item.cost;
+          return (
+            <div key={item.id} className="bg-gray-900 border border-gray-700 p-5 rounded-xl flex flex-col items-center text-center hover:border-cyan-500 transition-colors">
+              <div className="bg-gray-800 p-3 rounded-full mb-3"><Icon className="w-7 h-7 text-cyan-400" /></div>
+              <h3 className="font-bold text-lg mb-1">{item.name}</h3>
+              <p className="text-gray-400 text-xs mb-4 h-8 flex items-center">{item.desc}</p>
+              <button onClick={() => buyItem(item.id as any, item.cost)} disabled={!can}
+                className={`px-5 py-2 rounded font-bold w-full text-sm ${can ? 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:brightness-110' : 'bg-gray-700 opacity-50 cursor-not-allowed'}`}>
+                {item.cost} GEMS
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      <button onClick={closeShop}
+        className="flex items-center px-8 py-3 bg-gradient-to-r from-purple-600 to-pink-600 font-bold text-lg rounded hover:scale-105 transition-all">
+        RESUME <Play className="ml-2 w-5 h-5" fill="white" />
       </button>
     </div>
   );
 };
 
-// ─── Main HUD ─────────────────────────────────────────────────────────────────
-export const HUD: React.FC = () => {
+// ─── Pause screen ─────────────────────────────────────────────────────────────
+const PauseScreen: React.FC = () => {
+  const { resumeGame, restartGame, setStatus } = useStore();
+  return (
+    <div className="absolute inset-0 bg-black/85 z-[200] text-white pointer-events-auto backdrop-blur-md flex flex-col items-center justify-center p-8">
+      <div className="absolute top-4 right-4"><MuteBtn /></div>
+      <h2 className="text-5xl font-black text-cyan-400 mb-10 tracking-widest">PAUSED</h2>
+      <div className="flex flex-col gap-4 w-full max-w-xs">
+        <button onClick={resumeGame} className="w-full py-4 bg-gradient-to-r from-cyan-600 to-blue-600 font-black text-xl rounded-xl hover:scale-105 transition-all flex items-center justify-center">
+          <Play className="mr-3 fill-white" /> RESUME
+        </button>
+        <button onClick={restartGame} className="w-full py-3 bg-white/10 border border-white/20 font-bold rounded-xl hover:bg-white/20">RESTART</button>
+        <button onClick={() => setStatus(GameStatus.MENU)} className="text-gray-400 hover:text-white text-sm tracking-widest">[ MAIN MENU ]</button>
+      </div>
+    </div>
+  );
+};
+
+// ─── Skin shop ────────────────────────────────────────────────────────────────
+const SkinShop: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const { totalGems, currentSkin, unlockedSkins, setSkin, unlockSkin } = useStore();
+  const SKINS = [
+    { type:SkinType.DEFAULT,   name:'CLASSIC NEON', cost:0,    color:'#00aaff' },
+    { type:SkinType.NEON_BLUE, name:'DEEP BLUE',    cost:500,  color:'#0066ff' },
+    { type:SkinType.NEON_GOLD, name:'CYBER GOLD',   cost:1000, color:'#ffaa00' },
+    { type:SkinType.PHANTOM,   name:'PHANTOM',      cost:2000, color:'#ff00ff' },
+  ];
+  return (
+    <div className="absolute inset-0 bg-black/95 z-[110] text-white pointer-events-auto flex flex-col items-center justify-center p-6">
+      <h2 className="text-3xl font-black text-pink-500 mb-4 tracking-widest">SKIN PROTOCOLS</h2>
+      <div className="flex items-center text-cyan-400 mb-6"><Diamond className="mr-2" /><span className="text-xl font-bold">{totalGems}</span></div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 w-full max-w-xl mb-8">
+        {SKINS.map(s => {
+          const unlocked = unlockedSkins.includes(s.type);
+          const selected = currentSkin === s.type;
+          return (
+            <div key={s.type} className={`p-4 rounded-xl border-2 flex flex-col items-center ${selected ? 'border-white bg-white/10' : 'border-gray-800 bg-gray-900'}`}>
+              <div className="w-12 h-12 rounded-full mb-3" style={{ background: s.color }} />
+              <div className="font-bold text-sm text-center mb-3">{s.name}</div>
+              {unlocked
+                ? <button onClick={() => setSkin(s.type)} className={`w-full py-1 rounded font-bold text-sm ${selected ? 'bg-white text-black' : 'bg-gray-700'}`}>{selected?'ACTIVE':'SELECT'}</button>
+                : <button onClick={() => unlockSkin(s.type, s.cost)} disabled={totalGems < s.cost}
+                    className={`w-full py-1 rounded font-bold text-sm ${totalGems >= s.cost ? 'bg-pink-600' : 'bg-gray-800 text-gray-500'}`}>{s.cost} GEMS</button>}
+            </div>
+          );
+        })}
+      </div>
+      <button onClick={onClose} className="px-10 py-3 bg-white text-black font-black rounded-full hover:scale-105 transition-all">BACK</button>
+    </div>
+  );
+};
+
+// ─── MENU ─────────────────────────────────────────────────────────────────────
+const MenuScreen: React.FC = () => {
+  const { startGame, highScore, playerLevel, totalGems } = useStore();
+  const [showSkins, setShowSkins] = useState(false);
+  const [showAch,   setShowAch  ] = useState(false);
+  const [showMiss,  setShowMiss ] = useState(false);
+
+  return (
+    <div className="absolute inset-0 flex items-center justify-center z-[100] bg-black/80 backdrop-blur-sm pointer-events-auto">
+      <div className="w-full max-w-sm rounded-3xl overflow-hidden border border-white/10 shadow-[0_0_50px_rgba(0,255,255,0.15)]">
+        <div className="bg-gradient-to-b from-purple-900/60 to-black p-8 flex flex-col items-center">
+          <Rocket className="text-cyan-400 w-16 h-16 mb-3 animate-bounce" />
+          <h1 className="text-4xl font-black text-white tracking-widest mb-1">GEMINI RUN</h1>
+          <p className="text-cyan-400 font-mono text-sm tracking-widest mb-2">BEAT THE UNIVERSE</p>
+
+          <div className="flex gap-4 text-sm mb-6">
+            <span className="text-yellow-400 flex items-center gap-1"><Trophy className="w-4 h-4" />{highScore.toLocaleString()}</span>
+            <span className="text-cyan-400 flex items-center gap-1"><Star className="w-4 h-4" />Lv.{playerLevel}</span>
+            <span className="text-pink-400 flex items-center gap-1"><Diamond className="w-4 h-4" />{totalGems}</span>
+          </div>
+
+          <button onClick={() => { audio.init(); startGame(); }}
+            className="w-full py-4 bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-black text-xl rounded-xl hover:brightness-110 transition-all mb-4 shadow-[0_0_20px_rgba(0,255,255,0.3)]">
+            INITIALIZE RUN ▶
+          </button>
+
+          <div className="flex gap-3 mt-2">
+            <button onClick={() => setShowSkins(true)} className="p-2 bg-white/5 border border-white/10 rounded-full hover:bg-white/10 transition-all"><Palette className="text-pink-500 w-5 h-5" /></button>
+            <button onClick={() => setShowAch(true)}   className="p-2 bg-white/5 border border-white/10 rounded-full hover:bg-white/10 transition-all"><Award className="text-yellow-500 w-5 h-5" /></button>
+            <button onClick={() => setShowMiss(true)}  className="p-2 bg-white/5 border border-white/10 rounded-full hover:bg-white/10 transition-all"><Target className="text-cyan-500 w-5 h-5" /></button>
+            <MuteBtn />
+          </div>
+
+          <p className="text-gray-600 text-[10px] font-mono mt-4 tracking-wider text-center">ARROWS/SWIPE · ↓ SLIDE · ↑ JUMP · SPACE IMMORTAL</p>
+        </div>
+      </div>
+      {showSkins && <SkinShop onClose={() => setShowSkins(false)} />}
+      {showAch   && <AchievementsPanel onClose={() => setShowAch(false)} />}
+      {showMiss  && <MissionsPanel onClose={() => setShowMiss(false)} />}
+    </div>
+  );
+};
+
+// ─── Game Over ────────────────────────────────────────────────────────────────
+const GameOverScreen: React.FC = () => {
+  const { score, highScore, restartGame, gemsCollected, distance, level, achievements, newAchievements, dismissAchievements, xp, playerLevel } = useStore();
+  const [showAch, setShowAch] = useState(false);
+  const newUnlocked = achievements.filter(a => newAchievements.includes(a.id));
+
+  return (
+    <div className="absolute inset-0 bg-black/90 z-[100] text-white pointer-events-auto flex flex-col items-center justify-center p-6">
+      <h1 className="text-5xl font-black mb-2 text-red-400 drop-shadow-[0_0_10px_rgba(255,0,0,0.6)]">GAME OVER</h1>
+      {newUnlocked.length > 0 && (
+        <div className="mb-4 cursor-pointer" onClick={() => setShowAch(true)}>
+          <div className="flex items-center gap-2 bg-yellow-900/80 border border-yellow-500 px-4 py-2 rounded-xl">
+            <span className="text-lg">{newUnlocked[0].icon}</span>
+            <span className="text-yellow-300 font-bold text-sm">{newUnlocked.length} Achievement{newUnlocked.length>1?'s':''} Unlocked! →</span>
+          </div>
+        </div>
+      )}
+      <div className="grid grid-cols-2 gap-3 w-full max-w-xs mb-6 mt-2">
+        {[
+          { label:'SCORE',    val: score.toLocaleString(),       color:'text-yellow-400' },
+          { label:'BEST',     val: highScore.toLocaleString(),   color:'text-cyan-400'   },
+          { label:'LEVEL',    val: `${level}/${5}`,              color:'text-purple-400' },
+          { label:'GEMS',     val: gemsCollected,                color:'text-pink-400'   },
+          { label:'DISTANCE', val: `${Math.floor(distance)} LY`, color:'text-green-400'  },
+          { label:'XP',       val: `+${Math.floor(score/10)}`,   color:'text-orange-400' },
+        ].map(s => (
+          <div key={s.label} className="bg-gray-900 border border-gray-700 p-3 rounded-lg text-center">
+            <div className="text-gray-500 text-xs mb-1">{s.label}</div>
+            <div className={`text-xl font-bold font-mono ${s.color}`}>{s.val}</div>
+          </div>
+        ))}
+      </div>
+      <button onClick={() => { audio.init(); restartGame(); }}
+        className="px-10 py-4 bg-gradient-to-r from-cyan-500 to-blue-600 font-black text-xl rounded-xl hover:scale-105 transition-all shadow-[0_0_20px_rgba(0,255,255,0.3)] mb-3">
+        RUN AGAIN ▶
+      </button>
+      {showAch && <AchievementsPanel onClose={() => { setShowAch(false); dismissAchievements(); }} />}
+    </div>
+  );
+};
+
+// ─── Victory ──────────────────────────────────────────────────────────────────
+const VictoryScreen: React.FC = () => {
+  const { score, restartGame, gemsCollected, distance } = useStore();
+  return (
+    <div className="absolute inset-0 bg-black/95 z-[100] text-white pointer-events-auto flex flex-col items-center justify-center p-6">
+      <Rocket className="w-20 h-20 text-yellow-400 mb-4 animate-bounce drop-shadow-[0_0_20px_gold]" />
+      <h1 className="text-4xl sm:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-orange-500 to-pink-500 mb-2 text-center">MISSION COMPLETE</h1>
+      <p className="text-cyan-300 font-mono tracking-widest mb-6 text-center">THE COSMOS HAS BEEN CONQUERED</p>
+      <div className="grid grid-cols-3 gap-3 mb-6 w-full max-w-xs">
+        <div className="bg-black/60 border border-yellow-500/30 rounded-xl p-3 text-center">
+          <div className="text-xs text-gray-400">SCORE</div><div className="text-xl font-bold text-yellow-400">{score.toLocaleString()}</div>
+        </div>
+        <div className="bg-black/60 border border-cyan-500/30 rounded-xl p-3 text-center">
+          <div className="text-xs text-gray-400">GEMS</div><div className="text-xl font-bold text-cyan-400">{gemsCollected}</div>
+        </div>
+        <div className="bg-black/60 border border-purple-500/30 rounded-xl p-3 text-center">
+          <div className="text-xs text-gray-400">DIST</div><div className="text-xl font-bold text-purple-400">{Math.floor(distance)}</div>
+        </div>
+      </div>
+      <button onClick={() => { audio.init(); restartGame(); }}
+        className="px-10 py-4 bg-white text-black font-black text-xl rounded-xl hover:scale-105 transition-all shadow-[0_0_40px_rgba(255,255,255,0.2)]">
+        PLAY AGAIN ▶
+      </button>
+    </div>
+  );
+};
+
+// ─── Main HUD (playing) ───────────────────────────────────────────────────────
+const PlayingHUD: React.FC = () => {
   const {
-    score, lives, maxLives, collectedLetters, status, level,
-    restartGame, startGame, gemsCollected, distance,
-    isImmortalityActive, speed, shieldActive, magnetActive,
-    speedBoostActive, pauseGame,
+    score, lives, maxLives, collectedLetters, level,
+    gemsCollected, distance, isImmortalityActive, speed,
+    shieldActive, magnetActive, speedBoostActive, isSliding,
+    comboMultiplier, pauseGame,
   } = useStore();
 
-  const [showSkins,       setShowSkins]       = useState(false);
-  const [showLeaderboard, setShowLeaderboard] = useState(false);
-  const [playerName,      setPlayerName]      = useState(localStorage.getItem('gemini_player_name') || '');
-  const [isSubmitting,    setIsSubmitting]    = useState(false);
-  const [submitError,     setSubmitError]     = useState<string | null>(null);
+  const TARGET = ['G','E','M','I','N','I'];
+  const biome  = BIOME_BY_LEVEL[level] ?? BiomeType.NEON_CITY;
+  const cols   = BIOME_COLORS[biome];
 
-  const target = ['G', 'E', 'M', 'I', 'N', 'I'];
-
-  if (status === GameStatus.SHOP)   return <ShopScreen />;
-  if (status === GameStatus.PAUSED) return <PauseScreen />;
-
-  // ── MENU ──────────────────────────────────────────────────────────────────
-  if (status === GameStatus.MENU) {
-    return (
-      <div className="absolute inset-0 flex items-center justify-center z-[100] bg-black/80 backdrop-blur-sm p-4 pointer-events-auto">
-        <div className="relative w-full max-w-md rounded-3xl overflow-hidden shadow-[0_0_50px_rgba(0,255,255,0.2)] border border-white/10 animate-in zoom-in-95 duration-500">
-          <div className="relative w-full bg-gray-900">
-            <img
-              src="https://www.gstatic.com/aistudio/starter-apps/gemini_runner/gemini_runner.png"
-              alt="Gemini Runner Cover"
-              className="w-full h-auto block"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#050011] via-black/30 to-transparent" />
-
-            <div className="absolute inset-0 flex flex-col justify-end items-center p-6 pb-8 text-center z-10">
-              <button
-                onClick={() => { audio.init(); startGame(); }}
-                className="w-full group relative px-6 py-4 bg-white/10 backdrop-blur-md border border-white/20 text-white font-black text-xl rounded-xl hover:bg-white/20 transition-all shadow-[0_0_20px_rgba(0,255,255,0.2)] hover:shadow-[0_0_30px_rgba(0,255,255,0.4)] hover:border-cyan-400 overflow-hidden"
-              >
-                <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/40 via-purple-500/40 to-pink-500/40 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
-                <span className="relative z-10 tracking-widest flex items-center justify-center">
-                  INITIALIZE RUN <Play className="ml-2 w-5 h-5 fill-white" />
-                </span>
-              </button>
-
-              <p className="text-cyan-400/60 text-[10px] md:text-xs font-mono mt-3 tracking-wider">
-                [ ARROWS / SWIPE TO MOVE ]
-              </p>
-
-              <div className="flex space-x-4 mt-6">
-                <button
-                  onClick={() => setShowSkins(true)}
-                  className="p-3 bg-white/5 border border-white/10 rounded-full hover:bg-white/10 transition-all"
-                >
-                  <Palette className="text-pink-500" />
-                </button>
-                <button
-                  onClick={() => setShowLeaderboard(true)}
-                  className="p-3 bg-white/5 border border-white/10 rounded-full hover:bg-white/10 transition-all"
-                >
-                  <List className="text-yellow-500" />
-                </button>
-                <MuteButton className="rounded-full border-white/10 bg-white/5" />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {showSkins       && <SkinShop          onClose={() => setShowSkins(false)}       />}
-        {showLeaderboard && <LeaderboardModal  onClose={() => setShowLeaderboard(false)} />}
-      </div>
-    );
-  }
-
-  // ── GAME OVER ─────────────────────────────────────────────────────────────
-  if (status === GameStatus.GAME_OVER) {
-    const handleScoreSubmit = async () => {
-      if (!playerName.trim() || isSubmitting) return;
-      setIsSubmitting(true);
-      setSubmitError(null);
-      localStorage.setItem('gemini_player_name', playerName);
-
-      // FIX: wrap Firebase call in try/catch so an error never crashes the UI
-      try {
-        await saveHighScore(playerName, score);
-        setShowLeaderboard(true);
-      } catch (err) {
-        console.warn('Score submit failed:', err);
-        setSubmitError('Could not submit score. Check your connection and try again.');
-      } finally {
-        setIsSubmitting(false);
-      }
-    };
-
-    return (
-      <div className="absolute inset-0 bg-black/90 z-[100] text-white pointer-events-auto backdrop-blur-sm overflow-y-auto">
-        <div className="absolute top-4 right-4">
-          <MuteButton />
-        </div>
-
-        <div className="flex flex-col items-center justify-center min-h-full py-8 px-4">
-          <h1 className="text-4xl md:text-6xl font-black text-white mb-6 drop-shadow-[0_0_10px_rgba(255,0,0,0.8)] font-cyber text-center">
-            GAME OVER
-          </h1>
-
-          <div className="w-full max-w-md mb-8">
-            <div className="bg-gray-900/80 p-6 rounded-xl border border-gray-700 mb-4">
-              <label className="block text-xs text-gray-400 mb-2 tracking-widest uppercase">
-                TRANSMIT SCORE TO COSMOS
-              </label>
-              <div className="flex space-x-2">
-                <input
-                  type="text"
-                  value={playerName}
-                  onChange={e => setPlayerName(e.target.value.toUpperCase().slice(0, 12))}
-                  placeholder="ENTER NAME"
-                  className="flex-1 bg-black border border-gray-700 rounded px-4 py-2 font-mono text-cyan-400 focus:border-cyan-500 outline-none"
-                />
-                <button
-                  onClick={handleScoreSubmit}
-                  disabled={isSubmitting || !playerName.trim()}
-                  className="bg-yellow-600 px-4 py-2 rounded font-bold disabled:opacity-50"
-                >
-                  {isSubmitting ? '...' : 'SUBMIT'}
-                </button>
-              </div>
-              {submitError && (
-                <p className="text-red-400 text-xs mt-2 font-mono">{submitError}</p>
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 md:gap-4 text-center mb-8 w-full max-w-md">
-            <div className="bg-gray-900/80 p-3 md:p-4 rounded-lg border border-gray-700 flex items-center justify-between">
-              <div className="flex items-center text-yellow-400 text-sm md:text-base">
-                <Trophy className="mr-2 w-4 h-4 md:w-5 md:h-5" /> LEVEL
-              </div>
-              <div className="text-xl md:text-2xl font-bold font-mono">{level} / 3</div>
-            </div>
-            <div className="bg-gray-900/80 p-3 md:p-4 rounded-lg border border-gray-700 flex items-center justify-between">
-              <div className="flex items-center text-cyan-400 text-sm md:text-base">
-                <Diamond className="mr-2 w-4 h-4 md:w-5 md:h-5" /> GEMS COLLECTED
-              </div>
-              <div className="text-xl md:text-2xl font-bold font-mono">{gemsCollected}</div>
-            </div>
-            <div className="bg-gray-900/80 p-3 md:p-4 rounded-lg border border-gray-700 flex items-center justify-between">
-              <div className="flex items-center text-purple-400 text-sm md:text-base">
-                <MapPin className="mr-2 w-4 h-4 md:w-5 md:h-5" /> DISTANCE
-              </div>
-              <div className="text-xl md:text-2xl font-bold font-mono">{Math.floor(distance)} LY</div>
-            </div>
-            <div className="bg-gray-800/50 p-3 md:p-4 rounded-lg flex items-center justify-between mt-2">
-              <div className="flex items-center text-white text-sm md:text-base">TOTAL SCORE</div>
-              <div className="text-2xl md:text-3xl font-bold font-cyber text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500">
-                {score.toLocaleString()}
-              </div>
-            </div>
-          </div>
-
-          <button
-            onClick={() => { audio.init(); restartGame(); }}
-            className="px-8 md:px-10 py-3 md:py-4 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold text-lg md:text-xl rounded hover:scale-105 transition-all shadow-[0_0_20px_rgba(0,255,255,0.4)]"
-          >
-            RUN AGAIN
-          </button>
-        </div>
-
-        {showLeaderboard && <LeaderboardModal onClose={() => setShowLeaderboard(false)} />}
-      </div>
-    );
-  }
-
-  // ── VICTORY ───────────────────────────────────────────────────────────────
-  if (status === GameStatus.VICTORY) {
-    return (
-      <div className="absolute inset-0 bg-gradient-to-b from-purple-900/90 to-black/95 z-[100] text-white pointer-events-auto backdrop-blur-md overflow-y-auto">
-        <div className="absolute top-4 right-4">
-          <MuteButton />
-        </div>
-        <div className="flex flex-col items-center justify-center min-h-full py-8 px-4">
-          <Rocket className="w-16 h-16 md:w-24 md:h-24 text-yellow-400 mb-4 animate-bounce drop-shadow-[0_0_15px_rgba(255,215,0,0.6)]" />
-          <h1 className="text-3xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-orange-500 to-pink-500 mb-2 font-cyber text-center leading-tight">
-            MISSION COMPLETE
-          </h1>
-          <p className="text-cyan-300 text-sm md:text-2xl font-mono mb-8 tracking-widest text-center">
-            THE ANSWER TO THE UNIVERSE HAS BEEN FOUND
-          </p>
-
-          <div className="grid grid-cols-1 gap-4 text-center mb-8 w-full max-w-md">
-            <div className="bg-black/60 p-6 rounded-xl border border-yellow-500/30 shadow-[0_0_15px_rgba(255,215,0,0.1)]">
-              <div className="text-xs md:text-sm text-gray-400 mb-1 tracking-wider">FINAL SCORE</div>
-              <div className="text-3xl md:text-4xl font-bold font-cyber text-yellow-400">{score.toLocaleString()}</div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-black/60 p-4 rounded-lg border border-white/10">
-                <div className="text-xs text-gray-400">GEMS</div>
-                <div className="text-xl md:text-2xl font-bold text-cyan-400">{gemsCollected}</div>
-              </div>
-              <div className="bg-black/60 p-4 rounded-lg border border-white/10">
-                <div className="text-xs text-gray-400">DISTANCE</div>
-                <div className="text-xl md:text-2xl font-bold text-purple-400">{Math.floor(distance)} LY</div>
-              </div>
-            </div>
-          </div>
-
-          <button
-            onClick={() => { audio.init(); restartGame(); }}
-            className="px-8 md:px-12 py-4 md:py-5 bg-white text-black font-black text-lg md:text-xl rounded hover:scale-105 transition-all shadow-[0_0_40px_rgba(255,255,255,0.3)] tracking-widest"
-          >
-            RESTART MISSION
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // ── PLAYING HUD ───────────────────────────────────────────────────────────
   return (
-    <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 md:p-8 z-50">
-
+    <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-3 sm:p-6 z-50">
       {/* Top bar */}
-      <div className="flex justify-between items-start w-full">
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={pauseGame}
-            className="p-2 bg-black/50 border border-white/10 rounded-lg hover:bg-white/10 transition-all pointer-events-auto"
-          >
-            <Pause className="text-white w-6 h-6" />
+      <div className="flex justify-between items-start">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={pauseGame} className="p-2 bg-black/50 border border-white/10 rounded-lg hover:bg-white/10 pointer-events-auto">
+            <Pause className="text-white w-5 h-5" />
           </button>
-          <MuteButton />
-          <div className="text-3xl md:text-5xl font-bold text-cyan-400 drop-shadow-[0_0_10px_#00ffff] font-cyber ml-2">
-            {score.toLocaleString()}
-          </div>
+          <MuteBtn />
+          <div className="text-2xl sm:text-4xl font-bold text-cyan-400 drop-shadow-[0_0_10px_#00ffff] font-cyber">{score.toLocaleString()}</div>
+          {comboMultiplier >= 2 && (
+            <div className={`px-2 py-0.5 rounded font-black text-sm ${comboMultiplier>=8?'bg-red-600':'comboMultiplier>=5'?'bg-orange-600':'bg-yellow-600'} text-white animate-pulse`}>
+              ×{comboMultiplier}
+            </div>
+          )}
         </div>
-
-        <div className="flex space-x-1 md:space-x-2">
-          {[...Array(maxLives)].map((_, i) => (
-            <Heart
-              key={i}
-              className={`w-6 h-6 md:w-8 md:h-8 ${
-                i < lives ? 'text-pink-500 fill-pink-500' : 'text-gray-800 fill-gray-800'
-              } drop-shadow-[0_0_5px_#ff0054]`}
-            />
+        <div className="flex gap-1 flex-wrap justify-end">
+          {Array.from({length:maxLives}).map((_,i)=>(
+            <Heart key={i} className={`w-6 h-6 ${i<lives?'text-pink-500 fill-pink-500':'text-gray-800 fill-gray-800'}`} />
           ))}
         </div>
       </div>
 
-      {/* Level indicator */}
-      <div className="absolute top-5 left-1/2 transform -translate-x-1/2 text-sm md:text-lg text-purple-300 font-bold tracking-wider font-mono bg-black/50 px-3 py-1 rounded-full border border-purple-500/30 backdrop-blur-sm z-50">
-        LEVEL {level} <span className="text-gray-500 text-xs md:text-sm">/ 3</span>
+      {/* Level badge */}
+      <div className="absolute top-4 left-1/2 -translate-x-1/2">
+        <div className="bg-black/60 px-3 py-1 rounded-full border text-xs font-bold font-mono tracking-widest" style={{ borderColor: cols.dir, color: cols.dir }}>
+          LEVEL {level} / {5} — {biome.replace('_',' ')}
+        </div>
       </div>
 
-      {/* Active power-up indicators */}
-      <div className="absolute top-24 left-1/2 transform -translate-x-1/2 flex flex-col items-center space-y-2">
-        {isImmortalityActive && (
-          <div className="text-yellow-400 font-bold text-xl md:text-2xl animate-pulse flex items-center drop-shadow-[0_0_10px_gold]">
-            <Shield className="mr-2 fill-yellow-400" /> IMMORTAL
-          </div>
-        )}
-        {shieldActive && (
-          <div className="text-cyan-400 font-bold text-lg md:text-xl flex items-center drop-shadow-[0_0_10px_cyan]">
-            <Shield className="mr-2" /> SHIELD ACTIVE
-          </div>
-        )}
-        {magnetActive && (
-          <div className="text-pink-400 font-bold text-lg md:text-xl flex items-center drop-shadow-[0_0_10px_pink] animate-bounce">
-            <Zap className="mr-2 fill-pink-400" /> MAGNET ACTIVE
-          </div>
-        )}
-        {speedBoostActive && (
-          <div className="text-yellow-400 font-bold text-lg md:text-xl flex items-center drop-shadow-[0_0_10px_yellow] italic">
-            <Rocket className="mr-2" /> SPEED BOOST
-          </div>
-        )}
+      {/* Power-up indicators */}
+      <div className="absolute top-16 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1">
+        {isImmortalityActive && <div className="text-yellow-400 font-black text-xl animate-pulse flex items-center gap-1"><Shield className="w-5 h-5 fill-yellow-400"/>IMMORTAL</div>}
+        {shieldActive        && <div className="text-cyan-400 font-bold text-base flex items-center gap-1"><Shield className="w-4 h-4"/>SHIELD</div>}
+        {magnetActive        && <div className="text-pink-400 font-bold text-base animate-bounce">⚡ MAGNET</div>}
+        {speedBoostActive    && <div className="text-yellow-400 font-bold text-base italic">🚀 BOOST</div>}
+        {isSliding           && <div className="text-green-400 font-bold text-base">▼ SLIDING</div>}
       </div>
 
-      {/* GEMINI letter collection */}
-      <div className="absolute top-16 md:top-24 left-1/2 transform -translate-x-1/2 flex space-x-2 md:space-x-3">
-        {target.map((char, idx) => {
-          const isCollected = collectedLetters.includes(idx);
-          const color = GEMINI_COLORS[idx];
+      {/* Letter bar */}
+      <div className="absolute top-14 left-1/2 -translate-x-1/2 flex gap-1.5 sm:gap-2">
+        {TARGET.map((ch,idx)=>{
+          const got = collectedLetters.includes(idx);
           return (
-            <div
-              key={idx}
-              style={{
-                borderColor:     isCollected ? color : 'rgba(55,65,81,1)',
-                color:           isCollected ? 'rgba(0,0,0,0.8)' : 'rgba(55,65,81,1)',
-                boxShadow:       isCollected ? `0 0 20px ${color}` : 'none',
-                backgroundColor: isCollected ? color : 'rgba(0,0,0,0.9)',
-              }}
-              className="w-8 h-10 md:w-10 md:h-12 flex items-center justify-center border-2 font-black text-lg md:text-xl font-cyber rounded-lg transform transition-all duration-300"
-            >
-              {char}
+            <div key={idx} style={{
+              borderColor: got ? GEMINI_COLORS[idx] : 'rgba(55,65,81,1)',
+              color:        got ? '#000' : 'rgba(55,65,81,1)',
+              boxShadow:    got ? `0 0 12px ${GEMINI_COLORS[idx]}` : 'none',
+              background:   got ? GEMINI_COLORS[idx] : 'rgba(0,0,0,0.9)',
+            }} className="w-7 h-9 sm:w-9 sm:h-11 flex items-center justify-center border-2 font-black text-sm sm:text-lg font-cyber rounded-lg transition-all">
+              {ch}
             </div>
           );
         })}
       </div>
 
-      {/* Speed readout */}
-      <div className="w-full flex justify-end items-end">
-        <div className="flex items-center space-x-2 text-cyan-500 opacity-70">
-          <Zap className="w-4 h-4 md:w-6 md:h-6 animate-pulse" />
-          <span className="font-mono text-base md:text-xl">
-            SPEED {Math.round((speed / RUN_SPEED_BASE) * 100)}%
-          </span>
+      {/* Bottom: XP + speed + distance */}
+      <div className="flex justify-between items-end flex-wrap gap-2">
+        <XPBar />
+        <div className="flex gap-3 text-gray-500 text-xs font-mono">
+          <span><MapPin className="inline w-3 h-3 mr-1" />{Math.floor(distance)} LY</span>
+          <span><Zap className="inline w-3 h-3 mr-1" />{Math.round((speed/RUN_SPEED_BASE)*100)}%</span>
+          <span><Diamond className="inline w-3 h-3 mr-1" />{gemsCollected}</span>
         </div>
       </div>
+
+      {/* Achievement toasts */}
+      <AchievementToast />
     </div>
   );
 };
+
+// ─── Root HUD switch ──────────────────────────────────────────────────────────
+export const HUD: React.FC = () => {
+  const { status } = useStore();
+  if (status === GameStatus.SHOP)      return <ShopScreen />;
+  if (status === GameStatus.PAUSED)    return <PauseScreen />;
+  if (status === GameStatus.MENU)      return <MenuScreen />;
+  if (status === GameStatus.GAME_OVER) return <GameOverScreen />;
+  if (status === GameStatus.VICTORY)   return <VictoryScreen />;
+  return <PlayingHUD />;
+};
+HUDEOF
+echo "HUD.tsx done"
