@@ -1,6 +1,4 @@
-bash
 
-cat > /mnt/user-data/outputs/Runner-Coin-game-fixed/components/UI/HUD.tsx << 'HUDEOF'
 /**
  * @license SPDX-License-Identifier: Apache-2.0
  */
@@ -453,5 +451,4 @@ export const HUD: React.FC = () => {
   if (status === GameStatus.VICTORY)   return <VictoryScreen />;
   return <PlayingHUD />;
 };
-HUDEOF
-echo "HUD.tsx done"
+
