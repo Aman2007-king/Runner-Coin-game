@@ -6,7 +6,8 @@ import {
   GameStatus, RUN_SPEED_BASE, PowerUpType, SkinType,
   DailyMission, Achievement, SPEED_PER_LETTER, SPEED_PER_LEVEL, MAX_LEVEL,
 } from './types';
-import { audio } from './components/System/Audio';
+// audio imported lazily to avoid circular init
+const getAudio = () => (require('./components/System/Audio') as any).audio;
 
 // ─── Timer registry ────────────────────────────────────────────────────────
 const activeTimers = new Set<ReturnType<typeof setTimeout>>();
@@ -229,7 +230,7 @@ export const useStore = create<GameState>((set, get) => ({
     else if (status === GameStatus.PAUSED) set({ status: GameStatus.PLAYING });
   },
 
-  startSlide: () => set({ isSliding: true }),
+  startSlide: () => { set({ isSliding: true }); safeTimeout(() => set({ isSliding: false }), 600); },
   endSlide:   () => safeTimeout(() => set({ isSliding: false }), 600),
 
   breakCombo: () => set({ comboMultiplier: 1, comboStreak: 0 }),
@@ -351,16 +352,16 @@ export const useStore = create<GameState>((set, get) => ({
   collectPowerUp: (type) => {
     switch (type) {
       case PowerUpType.SHIELD:
-        audio.playShieldActivate();
+        getAudio().playShieldActivate();
         set({ shieldActive: true });
         break;
       case PowerUpType.MAGNET:
-        audio.playPowerUp();
+        getAudio().playPowerUp();
         set({ magnetActive: true });
         safeTimeout(() => set({ magnetActive: false }), 10000);
         break;
       case PowerUpType.SPEED_BOOST:
-        audio.playPowerUp();
+        getAudio().playPowerUp();
         set(s => ({ speedBoostActive: true, speed: s.speed * 1.4 }));
         safeTimeout(() => set(s => ({ speedBoostActive: false, speed: s.speed / 1.4 })), 5000);
         break;
@@ -476,6 +477,6 @@ export const useStore = create<GameState>((set, get) => ({
     const next = !get().isMuted;
     set({ isMuted: next });
     localStorage.setItem('gr_muted', String(next));
-    audio.setMuted(next);
+    getAudio().setMuted(next);
   },
 }));
