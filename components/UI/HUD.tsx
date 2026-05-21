@@ -1,4 +1,3 @@
-
 /**
  * @license SPDX-License-Identifier: Apache-2.0
  */
@@ -451,4 +450,3 @@ export const HUD: React.FC = () => {
   if (status === GameStatus.VICTORY)   return <VictoryScreen />;
   return <PlayingHUD />;
 };
-
