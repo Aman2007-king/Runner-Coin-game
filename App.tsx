@@ -1,119 +1,107 @@
 /**
- * @license
- * SPDX-License-Identifier: Apache-2.0
-*/
-
-
-import React, { Suspense } from 'react';
+ * @license SPDX-License-Identifier: Apache-2.0
+ */
+import React, { Suspense, useRef } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { Environment } from './components/World/Environment';
 import { Player } from './components/World/Player';
 import { LevelManager } from './components/World/LevelManager';
-import { Effects } from './components/World/Effects';
 import { HUD } from './components/UI/HUD';
 import { useStore } from './store';
 import { GameStatus } from './types';
 import { audio } from './components/System/Audio';
 import ErrorBoundary from './components/System/ErrorBoundary';
 
-// Dynamic Camera Controller
-const CameraController = () => {
+// ── Detect mobile once ────────────────────────────────────────────────────────
+const IS_MOBILE = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
+  || window.innerWidth < 768;
+
+// ── Camera controller with screen shake ────────────────────────────────────────
+const CameraController: React.FC = () => {
   const { camera, size } = useThree();
-  const { laneCount } = useStore();
-  
-  useFrame((state, delta) => {
-    // Determine if screen is narrow (mobile portrait)
-    const aspect = size.width / size.height;
-    const isMobile = aspect < 1.2; // Threshold for "mobile-like" narrowness or square-ish displays
+  const { laneCount, screenShake, decayScreenShake } = useStore();
+  const shakeOffset = useRef(new THREE.Vector3());
 
-    // Calculate expansion factors
-    // Mobile requires backing up significantly more because vertical FOV is fixed in Three.js,
-    // meaning horizontal view shrinks as aspect ratio drops.
-    // We use more aggressive multipliers for mobile to keep outer lanes in frame.
-    const heightFactor = isMobile ? 2.0 : 0.5;
-    const distFactor = isMobile ? 4.5 : 1.0;
+  useFrame((_, delta) => {
+    const aspect    = size.width / size.height;
+    const isMobile  = aspect < 1.2;
+    const extra     = Math.max(0, laneCount - 3);
+    const targetY   = 5.5  + extra * (isMobile ? 2.0 : 0.5);
+    const targetZ   = 8.0  + extra * (isMobile ? 4.5 : 1.0);
+    const safeDelta = Math.min(delta, 0.05);
 
-    // Base (3 lanes): y=5.5, z=8
-    // Calculate target based on how many extra lanes we have relative to the start
-    const extraLanes = Math.max(0, laneCount - 3);
+    camera.position.lerp(new THREE.Vector3(0, targetY, targetZ), safeDelta * 2.0);
+    camera.lookAt(0, 0, -30);
 
-    const targetY = 5.5 + (extraLanes * heightFactor);
-    const targetZ = 8.0 + (extraLanes * distFactor);
-
-    const targetPos = new THREE.Vector3(0, targetY, targetZ);
-    
-    // Smoothly interpolate camera position
-    camera.position.lerp(targetPos, delta * 2.0);
-    
-    // Look further down the track to see the end of lanes
-    // Adjust look target slightly based on height to maintain angle
-    camera.lookAt(0, 0, -30); 
+    // Screen shake — perlin-like random offset scaled by trauma²
+    if (screenShake > 0) {
+      const mag = screenShake * screenShake * 0.4;
+      shakeOffset.current.set(
+        (Math.random() - 0.5) * mag,
+        (Math.random() - 0.5) * mag,
+        0,
+      );
+      camera.position.add(shakeOffset.current);
+      decayScreenShake(delta);
+    }
   });
-  
   return null;
 };
 
-function Scene() {
-  return (
-    <>
-        <Environment />
-        <group>
-            {/* Attach a userData to identify player group for LevelManager collision logic */}
-            <group userData={{ isPlayer: true }} name="PlayerGroup">
-                 <Player />
-            </group>
-            <LevelManager />
-        </group>
-        <Effects />
-    </>
-  );
-}
+// ── Lightweight bloom replacement — no postprocessing lib on mobile ───────────
+// We just use a slightly adjusted fog + higher emissive intensities
+const Scene: React.FC = () => (
+  <>
+    <Environment />
+    <group name="PlayerGroup" userData={{ isPlayer: true }}>
+      <Player />
+    </group>
+    <LevelManager />
+  </>
+);
 
-function App() {
-  const { status, togglePause } = useStore();
+export default function App() {
+  const { status, togglePause, isMuted } = useStore();
 
   React.useEffect(() => {
-    if (status === GameStatus.PLAYING) {
-      audio.startMusic();
-    } else if (status === GameStatus.PAUSED) {
-      // Keep music playing or pause it? Usually pause or lower volume.
-      // Let's pause it for now as requested "stop all game logic and animations"
-      audio.stopMusic();
-    } else {
-      audio.stopMusic();
-    }
+    if (status === GameStatus.PLAYING) audio.startMusic();
+    else audio.stopMusic();
   }, [status]);
 
   React.useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') {
-        togglePause();
-      }
+    const down = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') togglePause();
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', down);
+    return () => window.removeEventListener('keydown', down);
   }, [togglePause]);
+
+  // Pixel ratio: cap at 1 on mobile for big perf win
+  const dpr: [number, number] = IS_MOBILE ? [1, 1] : [1, 1.5];
 
   return (
     <ErrorBoundary>
       <div className="relative w-full h-screen bg-black overflow-hidden select-none">
         <HUD />
         <Canvas
-          shadows
-          dpr={[1, 1.5]} 
-          gl={{ antialias: false, stencil: false, depth: true, powerPreference: "high-performance" }}
-          // Initial camera, matches the controller base
+          dpr={dpr}
+          gl={{
+            antialias: false,
+            stencil: false,
+            depth: true,
+            powerPreference: 'high-performance',
+            // Disable logarithmic depth buffer (expensive on mobile)
+          }}
           camera={{ position: [0, 5.5, 8], fov: 60 }}
+          frameloop="always"
         >
           <CameraController />
           <Suspense fallback={null}>
-              <Scene />
+            <Scene />
           </Suspense>
         </Canvas>
       </div>
     </ErrorBoundary>
   );
 }
-
-export default App;
