@@ -4,8 +4,8 @@
 import React, { useState, useEffect } from 'react';
 import {
   Heart, Zap, Trophy, MapPin, Diamond, Rocket, ArrowUpCircle,
-  Shield, Activity, PlusCircle, Play, Palette, List, Pause,
-  Volume2, VolumeX, Star, ChevronUp, Award, Target, CheckCircle2,
+  Shield, Activity, PlusCircle, Play, Palette, Pause,
+  Volume2, VolumeX, Star, Award, Target, CheckCircle2,
 } from 'lucide-react';
 import { useStore } from '../../store';
 import {
