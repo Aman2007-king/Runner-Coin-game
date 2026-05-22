@@ -184,7 +184,7 @@ export const LevelManager: React.FC = () => {
     const nowPlaying  = status === GameStatus.PLAYING;
     const levelUp     = level !== prevLevel.current && nowPlaying;
 
-    if ((wasGameOver || wasVictory || prevStatus.current === GameStatus.MENU || prevStatus.current === GameStatus.SPACE_TRANSITION) && nowPlaying) {
+    if ((wasGameOver || wasVictory || prevStatus.current === GameStatus.MENU || prevStatus.current === GameStatus.SPACE_TRANSITION || prevStatus.current === GameStatus.AIRCRAFT_SHOP) && nowPlaying) {
       objects.current = []; setTick(t => t+1);
       distTraveled.current = 0; nextLetterDist.current = getLetterInterval(1);
       enemySpawnTimer.current    = 1.5;
@@ -194,7 +194,10 @@ export const LevelManager: React.FC = () => {
     } else if (levelUp && level > 1) {
       if (gamePhase === 1) {
         objects.current = objects.current.filter(o => o.position[2] > -80);
-        objects.current.push({ id: uuidv4(), type: ObjectType.SHOP_PORTAL, position: [0,0,-100], active: true });
+        // Only spawn mid-level shop portal for levels 2-4 (NOT level 5 — level 5 opens aircraft shop)
+        if (level <= 4) {
+          objects.current.push({ id: uuidv4(), type: ObjectType.SHOP_PORTAL, position: [0,0,-100], active: true });
+        }
         nextLetterDist.current = distTraveled.current - SPAWN_DISTANCE + getLetterInterval(level);
       } else {
         // Space level up: clear all hazards
