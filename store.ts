@@ -398,7 +398,6 @@ export const useStore = create<GameState>((set, get) => ({
     const { collectedLetters, level, speed } = get();
     if (collectedLetters.includes(index)) return;
     const newLetters = [...collectedLetters, index];
-    const newSpeed   = speed + RUN_SPEED_BASE * SPEED_PER_LETTER;
     const missions   = get().dailyMissions.map(m => {
       if (m.type === 'letters' && !m.completed) {
         const cur = Math.min(m.target, m.current + 1);
@@ -406,23 +405,33 @@ export const useStore = create<GameState>((set, get) => ({
       }
       return m;
     });
-    set({ collectedLetters: newLetters, speed: newSpeed, dailyMissions: missions });
 
-    if (newLetters.length === 6) {
+    const allCollected = newLetters.length === 6;
+
+    if (allCollected) {
+      // All letters collected — update letters + missions but keep CURRENT speed
+      // (do NOT add another speed bump, avoids the freeze/slow issue)
+      set({ collectedLetters: newLetters, dailyMissions: missions });
       if (level < MAX_LEVEL) {
         get().advanceLevel();
       } else {
-        // ── NEW: open aircraft shop instead of VICTORY ──────────────────────
+        // Level 5 complete → aircraft shop
         get().openAircraftShop();
       }
+    } else {
+      // Normal letter collection — bump speed per letter
+      const newSpeed = speed + RUN_SPEED_BASE * SPEED_PER_LETTER;
+      set({ collectedLetters: newLetters, speed: newSpeed, dailyMissions: missions });
     }
   },
 
   // ── advanceLevel (original, unchanged) ─────────────────────────────────────
   advanceLevel: () => {
-    const { level, laneCount, speed, achievements } = get();
+    const { level, laneCount, achievements } = get();
     const nextLevel = level + 1;
-    const newSpeed  = speed + RUN_SPEED_BASE * SPEED_PER_LEVEL;
+    // Speed resets to a level-appropriate base so it never becomes uncontrollable
+    // Base + 40% per level = Level2: 31.5, L3: 40.5, L4: 49.5, L5: 58.5
+    const newSpeed  = RUN_SPEED_BASE * (1 + (nextLevel - 1) * 0.40);
     const newLanes  = Math.min(laneCount + 2, 9);
     const newAch    = achievements.map(a => {
       if (a.id === 'level2' && nextLevel >= 2 && !a.unlocked) return { ...a, unlocked: true };
@@ -430,6 +439,7 @@ export const useStore = create<GameState>((set, get) => ({
       return a;
     });
     saveAchievements(newAch);
+    // status stays PLAYING and controls remain fully active
     set({ level: nextLevel, laneCount: newLanes, status: GameStatus.PLAYING, speed: newSpeed, collectedLetters: [], achievements: newAch });
   },
 
@@ -505,7 +515,7 @@ export const useStore = create<GameState>((set, get) => ({
       highScore:        newHigh,
       achievements:     newAch,
       selectedAircraft: AircraftModel.ALPHA,
-      speed:            0,
+      // Do NOT set speed here — runner canvas unmounts, Three.js frame loop stops anyway
     });
   },
 
