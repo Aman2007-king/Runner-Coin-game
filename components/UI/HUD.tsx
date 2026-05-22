@@ -10,6 +10,7 @@ import {
 import { useStore } from '../../store';
 import {
   GameStatus, GEMINI_COLORS, RUN_SPEED_BASE, SkinType, BiomeType,
+  AircraftModel, AIRCRAFT_SPECS, ROCKETS_PER_LEVEL,
   BIOME_BY_LEVEL, BIOME_COLORS,
 } from '../../types';
 import { audio } from '../System/Audio';
@@ -441,12 +442,108 @@ const PlayingHUD: React.FC = () => {
 };
 
 // ─── Root HUD switch ──────────────────────────────────────────────────────────
+
+// ── Aircraft Shop Screen (shown after Level 5 complete) ───────────────────────
+const AircraftShopScreen: React.FC = () => {
+  const { score, selectedAircraft, selectAircraft, confirmAircraftAndEnterSpace } = useStore();
+
+  const models = [AircraftModel.ALPHA, AircraftModel.BETA, AircraftModel.GAMMA, AircraftModel.DELTA];
+
+  const handleConfirm = () => {
+    confirmAircraftAndEnterSpace();
+  };
+
+  return (
+    <div className="absolute inset-0 bg-black z-[200] text-white flex flex-col items-center justify-center p-4 pointer-events-auto overflow-y-auto"
+      style={{ background: 'radial-gradient(ellipse at 50% 20%, #0a0030 0%, #000008 70%)' }}>
+      {/* Stars */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        {Array.from({ length: 50 }).map((_, i) => (
+          <div key={i} className="absolute rounded-full bg-white"
+            style={{ width: `${1 + Math.random() * 2}px`, height: `${1 + Math.random() * 2}px`, left: `${Math.random() * 100}%`, top: `${Math.random() * 100}%`, opacity: 0.2 + Math.random() * 0.6 }} />
+        ))}
+      </div>
+
+      <div className="relative z-10 w-full max-w-lg">
+        <div className="text-center mb-4">
+          <div className="text-xs text-green-400 font-mono tracking-widest mb-1 animate-pulse">✅ LEVEL 5 COMPLETE — RUNNER PHASE CLEARED</div>
+          <h1 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400">
+            CHOOSE YOUR SPACECRAFT
+          </h1>
+          <p className="text-gray-400 text-xs mt-1">Entering Space Assault — Levels 6 to 10</p>
+          <div className="text-yellow-400 font-bold mt-1">CREDITS: {score.toLocaleString()}</div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          {models.map(model => {
+            const spec = AIRCRAFT_SPECS[model];
+            const isSelected = selectedAircraft === model;
+            const canAfford = model === AircraftModel.ALPHA || score >= spec.cost;
+            return (
+              <div key={model}
+                onClick={() => canAfford && selectAircraft(model)}
+                className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${isSelected ? 'border-cyan-400 bg-cyan-900/20 shadow-[0_0_20px_rgba(0,255,255,0.3)]' : canAfford ? 'border-gray-700 bg-gray-900/50 hover:border-gray-500' : 'border-gray-800 bg-gray-900/20 opacity-40 cursor-not-allowed'}`}>
+                {/* Aircraft visual */}
+                <div className="w-16 h-16 mx-auto mb-2 flex items-center justify-center">
+                  <svg viewBox="0 0 60 70" className="w-full h-full">
+                    <polygon points="30,5 12,45 24,38 30,55 36,38 48,45" fill={spec.color} />
+                    <polygon points="30,10 26,36 30,42 34,36" fill="white" opacity="0.6" />
+                    <rect x="14" y="44" width="8" height="10" fill="#ff6600" rx="2" />
+                    <rect x="38" y="44" width="8" height="10" fill="#ff6600" rx="2" />
+                  </svg>
+                </div>
+                <div className="text-center">
+                  <div className="font-black text-sm" style={{ color: spec.color }}>{spec.name}</div>
+                  <div className="text-xs text-gray-400 mt-1">{spec.feature}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">{spec.description}</div>
+                  <div className="mt-2 text-xs">
+                    {model === AircraftModel.ALPHA
+                      ? <span className="text-green-400 font-bold">FREE</span>
+                      : <span className={canAfford ? 'text-yellow-400 font-bold' : 'text-red-400 font-bold'}>{spec.cost} PTS</span>}
+                  </div>
+                  <div className="mt-1 text-[10px] text-purple-400">🚀 {ROCKETS_PER_LEVEL} Rockets</div>
+                </div>
+                {isSelected && <div className="text-center text-[10px] text-cyan-400 mt-1 font-bold">✓ SELECTED</div>}
+              </div>
+            );
+          })}
+        </div>
+
+        <button
+          onClick={handleConfirm}
+          disabled={!selectedAircraft}
+          className="w-full py-4 bg-gradient-to-r from-cyan-600 via-purple-600 to-pink-600 text-white font-black text-xl rounded-2xl hover:brightness-110 transition-all shadow-[0_0_30px_rgba(0,255,255,0.4)] disabled:opacity-50 disabled:cursor-not-allowed pointer-events-auto">
+          LAUNCH INTO SPACE →
+        </button>
+        <p className="text-center text-gray-600 text-xs mt-2 font-mono">MOVE: Touch/Mouse · AUTO-FIRE · 3 ROCKETS per level</p>
+      </div>
+    </div>
+  );
+};
+
+// ── Space Transition Warp Screen ───────────────────────────────────────────────
+const SpaceTransitionScreen: React.FC = () => (
+  <div className="absolute inset-0 z-[300] bg-black flex items-center justify-center pointer-events-none"
+    style={{ background: 'radial-gradient(ellipse at 50% 50%, #000033 0%, #000000 100%)' }}>
+    <div className="text-center animate-pulse">
+      <div className="text-6xl mb-4">🚀</div>
+      <div className="text-white font-black text-2xl tracking-widest mb-2">ENTERING DEEP SPACE</div>
+      <div className="text-cyan-400 font-mono text-sm">INITIALIZING SPACE ASSAULT...</div>
+      <div className="flex justify-center mt-4 gap-2">
+        {[0,1,2].map(i => <div key={i} className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: `${i * 0.2}s` }} />)}
+      </div>
+    </div>
+  </div>
+);
+
 export const HUD: React.FC = () => {
   const { status } = useStore();
-  if (status === GameStatus.SHOP)      return <ShopScreen />;
-  if (status === GameStatus.PAUSED)    return <PauseScreen />;
-  if (status === GameStatus.MENU)      return <MenuScreen />;
-  if (status === GameStatus.GAME_OVER) return <GameOverScreen />;
-  if (status === GameStatus.VICTORY)   return <VictoryScreen />;
+  if (status === GameStatus.SHOP)             return <ShopScreen />;
+  if (status === GameStatus.PAUSED)           return <PauseScreen />;
+  if (status === GameStatus.MENU)             return <MenuScreen />;
+  if (status === GameStatus.GAME_OVER)        return <GameOverScreen />;
+  if (status === GameStatus.VICTORY)          return <VictoryScreen />;
+  if ((status as string) === 'AIRCRAFT_SHOP') return <AircraftShopScreen />;
+  if ((status as string) === 'SPACE_TRANSITION') return <SpaceTransitionScreen />;
   return <PlayingHUD />;
 };
