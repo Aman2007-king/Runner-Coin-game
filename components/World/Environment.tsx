@@ -57,7 +57,6 @@ const MovingGrid: React.FC<{ biome: BiomeType }> = ({ biome }) => {
   const ref    = useRef<THREE.Mesh>(null);
   const offset = useRef(0);
   const cols   = BIOME_COLORS[biome];
-  // Fewer segments on mobile
   const segs   = IS_MOBILE ? [20, 25] : [30, 40];
 
   useFrame((_, delta) => {
@@ -130,7 +129,7 @@ const SideScenery: React.FC<{ biome: BiomeType }> = ({ biome }) => {
   const ref    = useRef<THREE.Group>(null);
   const offset = useRef(0);
   const cols   = BIOME_COLORS[biome];
-  if (IS_MOBILE) return null; // skip on mobile
+  if (IS_MOBILE) return null;
 
   const buildings = useMemo(() => {
     const out = [];
@@ -149,7 +148,7 @@ const SideScenery: React.FC<{ biome: BiomeType }> = ({ biome }) => {
   useFrame((_, delta) => {
     if (!ref.current) return;
     offset.current += Math.min(delta, 0.05) * speed;
-    const cycle = 20 * 15; // 20 buildings * 15 gap
+    const cycle = 20 * 15;
     ref.current.position.z = offset.current % cycle;
   });
 
@@ -165,12 +164,135 @@ const SideScenery: React.FC<{ biome: BiomeType }> = ({ biome }) => {
   );
 };
 
+// ── NEW: Nebula backdrop cloud spheres for Phase 3 ─────────────────────────────
+const NebulaBackdrop: React.FC<{ biome: BiomeType }> = ({ biome }) => {
+  const ref0 = useRef<THREE.Mesh>(null);
+  const ref1 = useRef<THREE.Mesh>(null);
+  const ref2 = useRef<THREE.Mesh>(null);
+  const cols = BIOME_COLORS[biome];
+  const refs = [ref0, ref1, ref2];
+
+  useFrame(state => {
+    refs.forEach((r, i) => {
+      if (!r.current) return;
+      r.current.rotation.z = state.clock.elapsedTime * 0.02 * (i % 2 === 0 ? 1 : -1);
+    });
+  });
+
+  const positions: [number, number, number][] = [[-60, 20, -220], [80, -10, -260], [0, 40, -300]];
+
+  return (
+    <>
+      {positions.map((pos, i) => (
+        <mesh key={i} ref={refs[i]} position={pos}>
+          <sphereGeometry args={[50 + i * 20, IS_MOBILE ? 8 : 16, IS_MOBILE ? 8 : 16]} />
+          <meshBasicMaterial color={cols.accent} transparent opacity={0.04 + i * 0.01} side={THREE.BackSide} />
+        </mesh>
+      ))}
+    </>
+  );
+};
+
+// ── NEW: Background asteroid debris field (visual only, non-collidable) ────────
+const AsteroidDebrisField: React.FC<{ biome: BiomeType }> = ({ biome }) => {
+  const groupRef = useRef<THREE.Group>(null);
+  const cols     = BIOME_COLORS[biome];
+  const speed    = useStore(s => s.speed);
+  const offset   = useRef(0);
+
+  const debris = useMemo(() => Array.from({ length: IS_MOBILE ? 12 : 30 }, () => ({
+    x:         (Math.random() - 0.5) * 120,
+    y:         (Math.random() - 0.5) * 40 + 5,
+    z:         -60 - Math.random() * 200,
+    r:         0.4 + Math.random() * 1.2,
+    rotSpeedX: (Math.random() - 0.5) * 0.4,
+    rotSpeedY: (Math.random() - 0.5) * 0.4,
+  })), []);
+
+  useFrame((_, delta) => {
+    if (!groupRef.current) return;
+    offset.current += Math.max(speed, 5) * Math.min(delta, 0.05) * 0.5;
+    groupRef.current.position.z = offset.current % 200;
+    groupRef.current.children.forEach((child, i) => {
+      if (i < debris.length) {
+        child.rotation.x += debris[i].rotSpeedX * delta;
+        child.rotation.y += debris[i].rotSpeedY * delta;
+      }
+    });
+  });
+
+  return (
+    <group ref={groupRef}>
+      {debris.map((d, i) => (
+        <mesh key={i} position={[d.x, d.y, d.z]}>
+          <dodecahedronGeometry args={[d.r, 0]} />
+          <meshStandardMaterial color={cols.grid} roughness={0.9} metalness={0.1} />
+        </mesh>
+      ))}
+    </group>
+  );
+};
+
+// ── NEW: Dashed lane markers for space phase (replaces solid floor) ────────────
+const SpaceLaneMarkers: React.FC<{ biome: BiomeType }> = ({ biome }) => {
+  const laneCount = useStore(s => s.laneCount);
+  const speed     = useStore(s => s.speed);
+  const cols      = BIOME_COLORS[biome];
+  const offset    = useRef(0);
+  const groupRef  = useRef<THREE.Group>(null);
+
+  useFrame((_, delta) => {
+    if (!groupRef.current) return;
+    offset.current += Math.max(speed, 5) * Math.min(delta, 0.05);
+    groupRef.current.position.z = offset.current % 20;
+  });
+
+  const laneXs = useMemo(() => {
+    const max = Math.floor(laneCount / 2);
+    return Array.from({ length: laneCount + 1 }, (_, i) => (i - max) * LANE_WIDTH);
+  }, [laneCount]);
+
+  return (
+    <group ref={groupRef}>
+      {laneXs.map((x, xi) =>
+        Array.from({ length: 12 }, (_, i) => (
+          <mesh key={`${xi}-${i}`} position={[x, -1.5, -10 - i * 15]}>
+            <sphereGeometry args={[0.08, 6, 6]} />
+            <meshBasicMaterial color={cols.dir} transparent opacity={0.5} />
+          </mesh>
+        ))
+      )}
+    </group>
+  );
+};
+
 // ── Main export ────────────────────────────────────────────────────────────────
 export const Environment: React.FC = () => {
-  const level = useStore(s => s.level);
-  const biome = BIOME_BY_LEVEL[level] ?? BiomeType.NEON_CITY;
-  const cols  = BIOME_COLORS[biome];
+  const level     = useStore(s => s.level);
+  const gamePhase = useStore(s => s.gamePhase);
+  const biome     = BIOME_BY_LEVEL[level] ?? BiomeType.NEON_CITY;
+  const cols      = BIOME_COLORS[biome];
 
+  // ── NEW: Phase 3 — space environment ──────────────────────────────────────
+  if (gamePhase === 3) {
+    return (
+      <>
+        <color attach="background" args={[cols.bg as any]} />
+        <fog attach="fog" args={[cols.fog, IS_MOBILE ? 100 : 80, IS_MOBILE ? 250 : 320]} />
+        <ambientLight intensity={0.15} color={cols.ambient} />
+        <directionalLight position={[0, 30, -10]} intensity={1.2} color={cols.dir} />
+        {!IS_MOBILE && (
+          <pointLight position={[0, 20, -80]} intensity={3} color={cols.accent} distance={300} decay={2} />
+        )}
+        <StarField biome={biome} />
+        <NebulaBackdrop biome={biome} />
+        <AsteroidDebrisField biome={biome} />
+        <SpaceLaneMarkers biome={biome} />
+      </>
+    );
+  }
+
+  // ── Phase 1: original runner environment (unchanged) ──────────────────────
   return (
     <>
       <color attach="background" args={[cols.bg as any]} />
