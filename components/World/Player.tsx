@@ -5,7 +5,7 @@ import React, { useRef, useEffect, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useStore } from '../../store';
-import { LANE_WIDTH, GameStatus, SkinType } from '../../types';
+import { LANE_WIDTH, GameStatus, SkinType, AircraftModel, AIRCRAFT_SPECS } from '../../types';
 import { audio } from '../System/Audio';
 
 // ── IS_MOBILE must be declared FIRST before any usage ─────────────────────────
@@ -26,9 +26,16 @@ const LEG_GEO    = new THREE.BoxGeometry(0.15, 0.7, 0.15);
 const SHADOW_GEO = new THREE.CircleGeometry(0.5, IS_MOBILE ? 16 : 32);
 const SHIELD_GEO = new THREE.SphereGeometry(1, IS_MOBILE ? 12 : 20, IS_MOBILE ? 12 : 20);
 
+// ── NEW: Spacecraft geometries ─────────────────────────────────────────────────
+const SHIP_BODY_GEO   = new THREE.ConeGeometry(0.5, 1.8, IS_MOBILE ? 5 : 8);
+const SHIP_WING_GEO   = new THREE.BoxGeometry(1.6, 0.12, 0.7);
+const SHIP_ENGINE_GEO = new THREE.CylinderGeometry(0.18, 0.1, 0.5, 6);
+const SHIP_GLOW_GEO   = new THREE.SphereGeometry(0.22, IS_MOBILE ? 6 : 10, IS_MOBILE ? 6 : 10);
+const ROCKET_TRAIL_GEO = new THREE.ConeGeometry(0.18, 0.9, 6);
+
 function buildMaterials(skin: SkinType, immortal: boolean) {
   let armor = '#00aaff', glow = '#00ffff';
-  if (immortal)                      { armor = '#ffd700'; glow = '#ffffff'; }
+  if (immortal)                         { armor = '#ffd700'; glow = '#ffffff'; }
   else if (skin === SkinType.NEON_BLUE) { armor = '#0066ff'; glow = '#00ffff'; }
   else if (skin === SkinType.NEON_GOLD) { armor = '#ffaa00'; glow = '#ffff00'; }
   else if (skin === SkinType.PHANTOM)   { armor = '#333333'; glow = '#ff00ff'; }
@@ -41,6 +48,23 @@ function buildMaterials(skin: SkinType, immortal: boolean) {
       color: '#4488ff', transparent: true, opacity: 0.15,
       wireframe: true, emissive: '#00aaff', emissiveIntensity: 1.5,
       side: THREE.DoubleSide,
+    }),
+  };
+}
+
+// ── NEW: build ship materials based on aircraft model ─────────────────────────
+function buildShipMaterials(model: AircraftModel) {
+  const spec  = AIRCRAFT_SPECS[model];
+  const col   = spec.color;
+  return {
+    body:   new THREE.MeshStandardMaterial({ color: '#0a0a1a', roughness: 0.3, metalness: 0.9 }),
+    accent: new THREE.MeshStandardMaterial({ color: col, roughness: 0.1, metalness: 1.0, emissive: col, emissiveIntensity: 0.6 }),
+    engine: new THREE.MeshStandardMaterial({ color: '#222244', roughness: 0.5, metalness: 0.7 }),
+    glow:   new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.85 }),
+    trail:  new THREE.MeshBasicMaterial({ color: '#ff8800', transparent: true, opacity: 0.5 }),
+    shield: new THREE.MeshStandardMaterial({
+      color: '#00ff88', transparent: true, opacity: 0.12,
+      wireframe: true, emissive: '#00ff88', emissiveIntensity: 2.0, side: THREE.DoubleSide,
     }),
   };
 }
@@ -59,24 +83,36 @@ export const Player: React.FC = () => {
     status, laneCount, takeDamage, hasDoubleJump, activateImmortality,
     isImmortalityActive, currentSkin, shieldActive, speedBoostActive,
     startSlide, isSliding,
+    // ── NEW ─────────────────────────────────────────────────────────────────
+    gamePhase, selectedAircraft, takeDamageSpace, shipShieldConsumed,
+    rocketsRemaining, fireRocket,
   } = useStore();
 
   const [lane, setLane] = React.useState(0);
-  const targetX      = useRef(0);
-  const isJumping    = useRef(false);
-  const velocityY    = useRef(0);
-  const jumpsDone    = useRef(0);
-  const spinRot      = useRef(0);
-  const touchX       = useRef(0);
-  const touchY       = useRef(0);
-  const isInvincible = useRef(false);
-  const lastHitTime  = useRef(0);
+  const targetX         = useRef(0);
+  const isJumping       = useRef(false);
+  const velocityY       = useRef(0);
+  const jumpsDone       = useRef(0);
+  const spinRot         = useRef(0);
+  const touchX          = useRef(0);
+  const touchY          = useRef(0);
+  const isInvincible    = useRef(false);
+  const lastHitTime     = useRef(0);
+
+  // ── NEW: ship mouse target in Phase 3 ────────────────────────────────────
+  const shipTargetX = useRef(0);
+  const shipTargetY = useRef(0);
 
   const mats = useMemo(
     () => buildMaterials(currentSkin, isImmortalityActive),
     [currentSkin, isImmortalityActive],
   );
   useEffect(() => () => { Object.values(mats).forEach((m: any) => m.dispose()); }, [mats]);
+
+  // ── NEW: ship materials ───────────────────────────────────────────────────
+  const shipModel = selectedAircraft ?? AircraftModel.ALPHA;
+  const shipMats  = useMemo(() => buildShipMaterials(shipModel), [shipModel]);
+  useEffect(() => () => { Object.values(shipMats).forEach((m: any) => m.dispose()); }, [shipMats]);
 
   // Reset on new game
   useEffect(() => {
@@ -110,10 +146,26 @@ export const Player: React.FC = () => {
     if (!isJumping.current) { startSlide(); audio.playSlide(); }
   };
 
-  // Keyboard
+  // ── Keyboard (Phase 1 — original + NEW Phase 3 controls) ──────────────────
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (status !== GameStatus.PLAYING) return;
+
+      // ── NEW: Phase 3 keyboard ──────────────────────────────────────────────
+      if (gamePhase === 3) {
+        const max = Math.floor(laneCount / 2);
+        if (e.key === 'ArrowLeft'  || e.key === 'a') setLane(l => Math.max(l - 1, -max));
+        if (e.key === 'ArrowRight' || e.key === 'd') setLane(l => Math.min(l + 1,  max));
+        if (e.key === 'r' || e.key === 'R') {
+          if (rocketsRemaining > 0) {
+            fireRocket();
+            window.dispatchEvent(new CustomEvent('player-fire-rocket', { detail: { lane } }));
+          }
+        }
+        return;
+      }
+
+      // Phase 1 original controls
       const max = Math.floor(laneCount / 2);
       if (e.key === 'ArrowLeft'  || e.key === 'a') setLane(l => Math.max(l - 1, -max));
       if (e.key === 'ArrowRight' || e.key === 'd') setLane(l => Math.min(l + 1,  max));
@@ -123,9 +175,9 @@ export const Player: React.FC = () => {
     };
     window.addEventListener('keydown', down);
     return () => window.removeEventListener('keydown', down);
-  }, [status, laneCount, hasDoubleJump, activateImmortality]);
+  }, [status, laneCount, hasDoubleJump, activateImmortality, gamePhase, rocketsRemaining, fireRocket, lane]);
 
-  // Touch
+  // Touch (original Phase 1 logic + NEW Phase 3 swipe)
   useEffect(() => {
     const start = (e: TouchEvent) => {
       touchX.current = e.touches[0].clientX;
@@ -139,9 +191,12 @@ export const Player: React.FC = () => {
       if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 25) {
         if (dx > 0) setLane(l => Math.min(l + 1, max));
         else        setLane(l => Math.max(l - 1, -max));
-      } else if (dy < -25 && Math.abs(dy) > Math.abs(dx)) { doJump();  }
-        else if (dy >  25 && Math.abs(dy) > Math.abs(dx)) { doSlide(); }
-        else if (Math.abs(dx) < 10 && Math.abs(dy) < 10)  { activateImmortality(); }
+      } else if (gamePhase === 1) {
+        // Phase 1 only: up/down swipe = jump/slide
+        if      (dy < -25 && Math.abs(dy) > Math.abs(dx)) doJump();
+        else if (dy >  25 && Math.abs(dy) > Math.abs(dx)) doSlide();
+        else if (Math.abs(dx) < 10 && Math.abs(dy) < 10)  activateImmortality();
+      }
     };
     window.addEventListener('touchstart', start, { passive: true });
     window.addEventListener('touchend', end);
@@ -149,25 +204,28 @@ export const Player: React.FC = () => {
       window.removeEventListener('touchstart', start);
       window.removeEventListener('touchend', end);
     };
-  }, [status, laneCount, hasDoubleJump, activateImmortality]);
+  }, [status, laneCount, hasDoubleJump, activateImmortality, gamePhase]);
 
-  // Damage handler
+  // Damage handler — routes to correct takeDamage depending on phase
   useEffect(() => {
     const hit = () => {
       if (isInvincible.current || isImmortalityActive) return;
-      audio.playDamage(); takeDamage();
-      isInvincible.current = true; lastHitTime.current = Date.now();
+      audio.playDamage();
+      if (gamePhase === 3) takeDamageSpace();
+      else                 takeDamage();
+      isInvincible.current = true;
+      lastHitTime.current  = Date.now();
     };
     window.addEventListener('player-hit', hit);
     return () => window.removeEventListener('player-hit', hit);
-  }, [takeDamage, isImmortalityActive]);
+  }, [takeDamage, takeDamageSpace, isImmortalityActive, gamePhase]);
 
-  // Boost ramp launch
+  // Boost ramp launch (Phase 1 only)
   useEffect(() => {
     const launch = () => {
-      isJumping.current  = true;
-      jumpsDone.current  = 1;
-      velocityY.current  = JUMP_FORCE * 1.4;
+      isJumping.current = true;
+      jumpsDone.current = 1;
+      velocityY.current = JUMP_FORCE * 1.4;
       audio.playBoost();
     };
     window.addEventListener('boost-launch', launch);
@@ -180,19 +238,52 @@ export const Player: React.FC = () => {
     if (status !== GameStatus.PLAYING) return;
     const dt = Math.min(delta, MAX_DELTA);
 
-    // Horizontal movement
+    // ── NEW: Phase 3 ship movement ───────────────────────────────────────────
+    if (gamePhase === 3) {
+      const spec        = AIRCRAFT_SPECS[shipModel];
+      const agilityMult = spec.enhancedAgility ? 1.5 : 1.0;
+      targetX.current   = lane * LANE_WIDTH;
+      groupRef.current.position.x = THREE.MathUtils.lerp(
+        groupRef.current.position.x, targetX.current, dt * 14 * agilityMult,
+      );
+      // Gentle hover bob
+      groupRef.current.position.y = Math.sin(state.clock.elapsedTime * 2.5) * 0.12;
+      // Bank into turns
+      const xDiff = targetX.current - groupRef.current.position.x;
+      groupRef.current.rotation.z = -xDiff * 0.15;
+      // Engine glow pulse via bodyRef
+      if (bodyRef.current) {
+        bodyRef.current.children.forEach((child, i) => {
+          if (child instanceof THREE.Mesh && i > 3) {
+            const mat = child.material as THREE.MeshBasicMaterial;
+            if (mat.transparent) mat.opacity = 0.5 + Math.sin(state.clock.elapsedTime * 8 + i) * 0.3;
+          }
+        });
+      }
+      // Invincibility flicker
+      if (isInvincible.current) {
+        if (Date.now() - lastHitTime.current > 1500) {
+          isInvincible.current = false; groupRef.current.visible = true;
+        } else {
+          groupRef.current.visible = Math.floor(Date.now() / 50) % 2 === 0;
+        }
+      } else {
+        groupRef.current.visible = true;
+      }
+      return;
+    }
+
+    // ── Phase 1: original runner movement (unchanged) ────────────────────────
     targetX.current = lane * LANE_WIDTH;
     groupRef.current.position.x = THREE.MathUtils.lerp(
       groupRef.current.position.x, targetX.current, dt * 15,
     );
 
-    // Slide squish
     if (bodyRef.current) {
       const targetScaleY = isSliding ? SLIDE_H : 1;
       bodyRef.current.scale.y = THREE.MathUtils.lerp(bodyRef.current.scale.y, targetScaleY, dt * 12);
     }
 
-    // Jump physics
     if (isJumping.current) {
       groupRef.current.position.y += velocityY.current * dt;
       velocityY.current -= GRAVITY * dt;
@@ -201,18 +292,15 @@ export const Player: React.FC = () => {
         isJumping.current = false; jumpsDone.current = 0; velocityY.current = 0;
         if (bodyRef.current) bodyRef.current.rotation.x = 0;
       }
-      // Double-jump flip
       if (jumpsDone.current === 2 && bodyRef.current) {
         spinRot.current = Math.max(-Math.PI * 2, spinRot.current - dt * 15);
         bodyRef.current.rotation.x = spinRot.current;
       }
     }
 
-    // Banking
     const xDiff = targetX.current - groupRef.current.position.x;
     groupRef.current.rotation.z = -xDiff * 0.2;
 
-    // Limb animation
     const t = state.clock.elapsedTime * 25;
     if (!isJumping.current && !isSliding) {
       if (lArmRef.current) lArmRef.current.rotation.x = Math.sin(t) * 0.7;
@@ -222,7 +310,6 @@ export const Player: React.FC = () => {
       if (bodyRef.current) bodyRef.current.position.y = 1.1 + Math.abs(Math.sin(t)) * 0.1;
     }
 
-    // Shadow
     if (shadowRef.current) {
       const h = groupRef.current.position.y;
       const s = Math.max(0.2, 1 - h / 5);
@@ -230,14 +317,12 @@ export const Player: React.FC = () => {
       (shadowRef.current.material as THREE.MeshBasicMaterial).opacity = Math.max(0.1, 0.3 - h * 0.04);
     }
 
-    // Shield pulse
     if (shieldRef.current && shieldActive) {
       const p = 1.2 + Math.sin(state.clock.elapsedTime * 4) * 0.05;
       shieldRef.current.scale.set(p, p, p);
       shieldRef.current.rotation.y += dt * 0.5;
     }
 
-    // Invincibility flicker
     if (isInvincible.current) {
       if (Date.now() - lastHitTime.current > 1500) {
         isInvincible.current = false; groupRef.current.visible = true;
@@ -249,6 +334,58 @@ export const Player: React.FC = () => {
     }
   });
 
+  // ── NEW: Phase 3 — spacecraft render ──────────────────────────────────────
+  if (gamePhase === 3) {
+    const spec = AIRCRAFT_SPECS[shipModel];
+    return (
+      <group ref={groupRef}>
+        <group ref={bodyRef}>
+          {/* Main hull */}
+          <mesh rotation={[Math.PI, 0, 0]} geometry={SHIP_BODY_GEO} material={shipMats.body} />
+          {/* Accent stripe */}
+          <mesh rotation={[Math.PI, 0, 0]} scale={[0.62, 1.02, 0.62]} geometry={SHIP_BODY_GEO} material={shipMats.accent} />
+          {/* Wings */}
+          <mesh position={[0, -0.1, 0.1]} geometry={SHIP_WING_GEO} material={shipMats.body} />
+          <mesh position={[0, -0.1, 0.1]} scale={[1.01, 2.5, 1.01]} geometry={SHIP_WING_GEO} material={shipMats.accent} />
+          {/* Engines */}
+          <mesh position={[-0.55, -0.3, 0.1]} geometry={SHIP_ENGINE_GEO} material={shipMats.engine} />
+          <mesh position={[ 0.55, -0.3, 0.1]} geometry={SHIP_ENGINE_GEO} material={shipMats.engine} />
+          {/* Engine glows */}
+          <mesh position={[-0.55, -0.6, 0.1]} geometry={SHIP_GLOW_GEO} material={shipMats.glow} />
+          <mesh position={[ 0.55, -0.6, 0.1]} geometry={SHIP_GLOW_GEO} material={shipMats.glow} />
+          {/* Thrust trails */}
+          <mesh position={[-0.55, -1.0, 0.1]} rotation={[Math.PI, 0, 0]} geometry={ROCKET_TRAIL_GEO} material={shipMats.trail} />
+          <mesh position={[ 0.55, -1.0, 0.1]} rotation={[Math.PI, 0, 0]} geometry={ROCKET_TRAIL_GEO} material={shipMats.trail} />
+          {/* Delta passive shield ring (visible until consumed) */}
+          {spec.shieldGenerator && !shipShieldConsumed && (
+            <mesh geometry={SHIELD_GEO} material={shipMats.shield} scale={[1.8, 1.8, 1.8]} />
+          )}
+          {/* Beta magnet hull indicator */}
+          {spec.magnetizedHull && (
+            <mesh position={[0, 0.9, 0]}>
+              <torusGeometry args={[0.6, 0.05, 6, 20]} />
+              <meshBasicMaterial color={spec.color} transparent opacity={0.6} />
+            </mesh>
+          )}
+          {/* Gamma double blaster barrels */}
+          {spec.doubleBlasters && (
+            <>
+              <mesh position={[-0.38, 0.85, -0.15]}>
+                <cylinderGeometry args={[0.05, 0.05, 0.5, 5]} />
+                <meshBasicMaterial color={spec.color} />
+              </mesh>
+              <mesh position={[ 0.38, 0.85, -0.15]}>
+                <cylinderGeometry args={[0.05, 0.05, 0.5, 5]} />
+                <meshBasicMaterial color={spec.color} />
+              </mesh>
+            </>
+          )}
+        </group>
+      </group>
+    );
+  }
+
+  // ── Phase 1: original human runner (unchanged) ─────────────────────────────
   return (
     <group ref={groupRef}>
       <group ref={bodyRef} position={[0, 1.1, 0]}>
