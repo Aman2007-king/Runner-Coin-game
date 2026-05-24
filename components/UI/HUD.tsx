@@ -536,8 +536,105 @@ const SpaceTransitionScreen: React.FC = () => (
   </div>
 );
 
+// ── Space Shooter HUD (levels 6-10) ────────────────────────────────────────
+const SpaceShooterHUD: React.FC = () => {
+  const { score, lives, maxLives, level, gemsCollected, rocketsRemaining,
+          comboMultiplier, pauseGame, selectedAircraft, spaceGemsCollected } = useStore();
+  const spec = selectedAircraft ? AIRCRAFT_SPECS[selectedAircraft] : AIRCRAFT_SPECS[AircraftModel.ALPHA];
+  const d = level - 5;
+  const killTarget = 10 + d * 8;
+
+  const handleRocket = () => {
+    window.dispatchEvent(new Event('fire-rocket-ui'));
+  };
+
+  return (
+    <div className="absolute inset-0 pointer-events-none z-50">
+      {/* Top bar */}
+      <div className="flex justify-between items-start p-3">
+        <div className="flex items-center gap-2">
+          <button onClick={pauseGame} className="p-2 bg-black/60 border border-white/10 rounded-lg hover:bg-white/10 pointer-events-auto">
+            <Pause className="text-white w-5 h-5"/>
+          </button>
+          <MuteBtn/>
+          <div className="text-2xl sm:text-3xl font-bold font-mono drop-shadow-[0_0_8px_currentColor]"
+            style={{ color: spec.color }}>{score.toLocaleString()}</div>
+          {comboMultiplier >= 2 && (
+            <div className="px-2 py-0.5 bg-red-600 rounded font-black text-sm text-white animate-pulse">×{comboMultiplier}</div>
+          )}
+        </div>
+        {/* Lives */}
+        <div className="flex items-center gap-1">
+          {Array.from({ length: maxLives }).map((_, i) => (
+            <div key={i} className="w-3 h-4 rounded-sm border" style={{
+              background: i < lives ? spec.color : 'transparent',
+              borderColor: i < lives ? spec.color : '#444'
+            }}/>
+          ))}
+        </div>
+      </div>
+
+      {/* Level badge + kill progress */}
+      <div className="absolute top-14 left-1/2 -translate-x-1/2 text-center">
+        <div className="bg-black/70 px-3 py-1 rounded-full border text-xs font-bold font-mono tracking-wider mb-1"
+          style={{ borderColor: spec.color, color: spec.color }}>
+          SPACE ASSAULT · LEVEL {level}/10
+        </div>
+        <div className="flex items-center gap-1 justify-center">
+          <Crosshair className="w-3 h-3 text-gray-400"/>
+          <div className="w-32 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+            <div className="h-full rounded-full transition-all" style={{
+              width: `${Math.min(100, (spaceGemsCollected / ((d) * 30 + 30)) * 100)}%`,
+              background: `linear-gradient(90deg,${spec.color},#ff00ff)`
+            }}/>
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom: rocket button + ship name + gems */}
+      <div className="absolute bottom-0 left-0 right-0 flex items-end justify-between px-4 pb-5">
+        {/* Ship info */}
+        <div className="flex flex-col gap-1">
+          <div className="text-xs font-bold" style={{ color: spec.color }}>{spec.name}</div>
+          <div className="text-xs text-gray-500 font-mono">💎 {gemsCollected}</div>
+          <XPBar/>
+        </div>
+
+        {/* ROCKET button — large, on right */}
+        <button
+          onClick={handleRocket}
+          disabled={rocketsRemaining <= 0}
+          className="flex flex-col items-center gap-1 px-5 py-3 rounded-2xl border-2 font-black text-sm transition-all active:scale-95 pointer-events-auto"
+          style={{
+            borderColor: rocketsRemaining > 0 ? '#ff6600' : '#333',
+            background:  rocketsRemaining > 0 ? 'rgba(255,100,0,0.18)' : 'rgba(40,40,40,0.4)',
+            color:       rocketsRemaining > 0 ? '#ff8800' : '#555',
+            boxShadow:   rocketsRemaining > 0 ? '0 0 18px rgba(255,100,0,0.5)' : 'none',
+          }}>
+          <Rocket className="w-7 h-7"/>
+          <span>ROCKET</span>
+          <div className="flex gap-1">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="w-2.5 h-2.5 rounded-full border"
+                style={{ background: i < rocketsRemaining ? '#ff6600' : 'transparent', borderColor: i < rocketsRemaining ? '#ff6600' : '#444' }}/>
+            ))}
+          </div>
+        </button>
+      </div>
+
+      {/* Power-up indicators */}
+      <div className="absolute top-24 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1 pointer-events-none">
+        {useStore.getState().shieldActive && <div className="text-cyan-400 font-bold text-sm animate-pulse">🛡 SHIELD</div>}
+        {useStore.getState().magnetActive  && <div className="text-pink-400 font-bold text-sm">⚡ MAGNET</div>}
+      </div>
+
+      <AchievementToast/>
+    </div>
+  );
+};
+
 export const HUD: React.FC = () => {
-  const { status } = useStore();
+  const { status, gamePhase } = useStore();
   if (status === GameStatus.SHOP)             return <ShopScreen />;
   if (status === GameStatus.PAUSED)           return <PauseScreen />;
   if (status === GameStatus.MENU)             return <MenuScreen />;
@@ -545,5 +642,6 @@ export const HUD: React.FC = () => {
   if (status === GameStatus.VICTORY)          return <VictoryScreen />;
   if ((status as string) === 'AIRCRAFT_SHOP') return <AircraftShopScreen />;
   if ((status as string) === 'SPACE_TRANSITION') return <SpaceTransitionScreen />;
+  if (status === GameStatus.PLAYING && gamePhase === 3) return <SpaceShooterHUD />;
   return <PlayingHUD />;
 };
