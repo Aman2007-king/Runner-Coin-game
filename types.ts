@@ -97,6 +97,7 @@ export interface DailyMission {
   reward: number;
   type: 'gems' | 'distance' | 'letters' | 'noHit';
   completed: boolean;
+  claimed: boolean;
 }
 
 export interface Achievement {
