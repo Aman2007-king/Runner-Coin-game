@@ -8,11 +8,9 @@ import { Environment } from './components/World/Environment';
 import { Player } from './components/World/Player';
 import { LevelManager } from './components/World/LevelManager';
 import { HUD } from './components/UI/HUD';
-import { SpaceShooter } from './components/Space/SpaceShooter';
 import { useStore } from './store';
 import { GameStatus } from './types';
 import { audio } from './components/System/Audio';
-import { ensureAnonymousAuth } from './firebase';
 import ErrorBoundary from './components/System/ErrorBoundary';
 
 const IS_MOBILE = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) || window.innerWidth < 768;
@@ -51,18 +49,12 @@ const RunnerScene: React.FC = () => (
 );
 
 export default function App() {
-  const { status, gamePhase, togglePause } = useStore();
+  const { status, togglePause } = useStore();
 
   React.useEffect(() => {
     if (status === GameStatus.PLAYING) audio.startMusic();
     else audio.stopMusic();
   }, [status]);
-
-  React.useEffect(() => {
-    ensureAnonymousAuth().catch((error) => {
-      console.warn('Anonymous leaderboard authentication unavailable:', error);
-    });
-  }, []);
 
   React.useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -74,23 +66,21 @@ export default function App() {
 
   const dpr: [number, number] = IS_MOBILE ? [1, 1] : [1, 1.5];
 
-  // Which mode to render
-  const isAircraftShop  = (status as string) === 'AIRCRAFT_SHOP';
+  // The 3D scene renders for both Phase 1 (runner) and Phase 3 (space shooter) —
+  // Environment/Player/LevelManager each branch internally on gamePhase.
+  // It's only skipped for the two full-screen HUD-only overlay statuses.
+  const isAircraftShop    = (status as string) === 'AIRCRAFT_SHOP';
   const isSpaceTransition = (status as string) === 'SPACE_TRANSITION';
-  const isShooterPhase  = gamePhase === 3 && !isAircraftShop && !isSpaceTransition;
-  const isRunnerPhase   = !isShooterPhase && !isAircraftShop && !isSpaceTransition;
+  const showScene         = !isAircraftShop && !isSpaceTransition;
 
   return (
     <ErrorBoundary>
       <div className="relative w-full h-screen bg-black overflow-hidden select-none">
-        {/* Phase 3 is rendered exclusively by the Canvas SpaceShooter */}
-        {isShooterPhase && <SpaceShooter />}
-
         {/* HUD overlay on all screens (handles aircraft shop, transition, game over etc.) */}
         <HUD />
 
-        {/* Three.js scene is used exclusively by the runner phase (levels 1-5) */}
-        {isRunnerPhase && (
+        {/* 3D scene — runner (levels 1-5) and space shooter (levels 6-10) */}
+        {showScene && (
           <Canvas
             dpr={dpr}
             gl={{ antialias: false, stencil: false, depth: true, powerPreference: 'high-performance' }}
