@@ -5,7 +5,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Heart, Zap, Trophy, MapPin, Diamond, Rocket, ArrowUpCircle,
   Shield, Activity, PlusCircle, Play, Palette, Pause,
-  Volume2, VolumeX, Star, Award, Target, CheckCircle2,
+  Volume2, VolumeX, Star, Award, Target, CheckCircle2, Crosshair,
 } from 'lucide-react';
 import { useStore } from '../../store';
 import {
@@ -14,7 +14,6 @@ import {
   BIOME_BY_LEVEL, BIOME_COLORS,
 } from '../../types';
 import { audio } from '../System/Audio';
-import { getLeaderboard } from '../../firebase';
 
 // ─── Mute button ──────────────────────────────────────────────────────────────
 const MuteBtn: React.FC = () => {
@@ -86,7 +85,7 @@ const MissionsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       <div className="w-full max-w-md space-y-4 mb-8">
         {dailyMissions.map(m => {
           const pct    = Math.min(100, Math.round((m.current / m.target) * 100));
-          const claimed = m.current === -1;
+          const claimed = m.claimed;
           return (
             <div key={m.id} className="bg-gray-900 border border-gray-700 rounded-xl p-4">
               <div className="flex justify-between items-start mb-2">
@@ -246,62 +245,12 @@ const SkinShop: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   );
 };
 
-// ─── Leaderboard panel ────────────────────────────────────────────────────────
-const LeaderboardPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
-  const [rows, setRows] = useState<{ name?: string; score?: number }[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [name, setName] = useState(() => localStorage.getItem('gr_player_name') || 'Player');
-
-  useEffect(() => {
-    let active = true;
-    getLeaderboard()
-      .then(data => { if (active) setRows(data as { name?: string; score?: number }[]); })
-      .catch(error => console.warn('Unable to load leaderboard:', error))
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, []);
-
-  const saveName = (value: string) => {
-    const clean = value.slice(0, 30);
-    setName(clean);
-    localStorage.setItem('gr_player_name', clean || 'Player');
-  };
-
-  return (
-    <div className="absolute inset-0 bg-black/95 z-[115] text-white pointer-events-auto flex flex-col items-center justify-center p-6">
-      <div className="w-full max-w-md">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-3xl font-black text-yellow-400 tracking-widest">LEADERBOARD</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-white text-sm">CLOSE</button>
-        </div>
-        <label className="block text-xs text-gray-500 font-mono mb-1">PLAYER NAME</label>
-        <input value={name} maxLength={30} onChange={e => saveName(e.target.value)}
-          className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 mb-5 outline-none focus:border-cyan-500" />
-        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-          {loading ? (
-            <div className="p-6 text-center text-gray-500 font-mono">LOADING…</div>
-          ) : rows.length ? rows.map((row, index) => (
-            <div key={`${row.name ?? 'player'}-${index}`} className="flex items-center gap-3 px-4 py-3 border-b border-gray-800 last:border-b-0">
-              <span className="w-8 text-yellow-400 font-black">#{index + 1}</span>
-              <span className="flex-1 font-bold truncate">{row.name || 'Player'}</span>
-              <span className="text-cyan-400 font-mono font-bold">{Number(row.score || 0).toLocaleString()}</span>
-            </div>
-          )) : (
-            <div className="p-6 text-center text-gray-500 font-mono">NO SCORES YET</div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
-
 // ─── MENU ─────────────────────────────────────────────────────────────────────
 const MenuScreen: React.FC = () => {
   const { startGame, highScore, playerLevel, totalGems } = useStore();
   const [showSkins, setShowSkins] = useState(false);
   const [showAch,   setShowAch  ] = useState(false);
   const [showMiss,  setShowMiss ] = useState(false);
-  const [showBoard, setShowBoard] = useState(false);
 
   return (
     <div className="absolute inset-0 flex items-center justify-center z-[100] bg-black/80 backdrop-blur-sm pointer-events-auto">
@@ -326,7 +275,6 @@ const MenuScreen: React.FC = () => {
             <button onClick={() => setShowSkins(true)} className="p-2 bg-white/5 border border-white/10 rounded-full hover:bg-white/10 transition-all"><Palette className="text-pink-500 w-5 h-5" /></button>
             <button onClick={() => setShowAch(true)}   className="p-2 bg-white/5 border border-white/10 rounded-full hover:bg-white/10 transition-all"><Award className="text-yellow-500 w-5 h-5" /></button>
             <button onClick={() => setShowMiss(true)}  className="p-2 bg-white/5 border border-white/10 rounded-full hover:bg-white/10 transition-all"><Target className="text-cyan-500 w-5 h-5" /></button>
-            <button onClick={() => setShowBoard(true)} className="p-2 bg-white/5 border border-white/10 rounded-full hover:bg-white/10 transition-all"><Trophy className="text-yellow-400 w-5 h-5" /></button>
             <MuteBtn />
           </div>
 
@@ -336,7 +284,6 @@ const MenuScreen: React.FC = () => {
       {showSkins && <SkinShop onClose={() => setShowSkins(false)} />}
       {showAch   && <AchievementsPanel onClose={() => setShowAch(false)} />}
       {showMiss  && <MissionsPanel onClose={() => setShowMiss(false)} />}
-      {showBoard && <LeaderboardPanel onClose={() => setShowBoard(false)} />}
     </div>
   );
 };
@@ -433,7 +380,7 @@ const PlayingHUD: React.FC = () => {
           <MuteBtn />
           <div className="text-2xl sm:text-4xl font-bold text-cyan-400 drop-shadow-[0_0_10px_#00ffff] font-cyber">{score.toLocaleString()}</div>
           {comboMultiplier >= 2 && (
-            <div className={`px-2 py-0.5 rounded font-black text-sm ${comboMultiplier>=8?'bg-red-600':'comboMultiplier>=5'?'bg-orange-600':'bg-yellow-600'} text-white animate-pulse`}>
+            <div className={`px-2 py-0.5 rounded font-black text-sm ${comboMultiplier>=8?'bg-red-600':comboMultiplier>=5?'bg-orange-600':'bg-yellow-600'} text-white animate-pulse`}>
               ×{comboMultiplier}
             </div>
           )}
