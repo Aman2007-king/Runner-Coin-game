@@ -12,6 +12,7 @@ import { SpaceShooter } from './components/Space/SpaceShooter';
 import { useStore } from './store';
 import { GameStatus } from './types';
 import { audio } from './components/System/Audio';
+import { ensureAnonymousAuth } from './firebase';
 import ErrorBoundary from './components/System/ErrorBoundary';
 
 const IS_MOBILE = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) || window.innerWidth < 768;
@@ -58,6 +59,12 @@ export default function App() {
   }, [status]);
 
   React.useEffect(() => {
+    ensureAnonymousAuth().catch((error) => {
+      console.warn('Anonymous leaderboard authentication unavailable:', error);
+    });
+  }, []);
+
+  React.useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') togglePause();
     };
@@ -76,13 +83,13 @@ export default function App() {
   return (
     <ErrorBoundary>
       <div className="relative w-full h-screen bg-black overflow-hidden select-none">
-        {/* Space shooter canvas — visible in phases 6-10 */}
+        {/* Phase 3 is rendered exclusively by the Canvas SpaceShooter */}
         {isShooterPhase && <SpaceShooter />}
 
         {/* HUD overlay on all screens (handles aircraft shop, transition, game over etc.) */}
         <HUD />
 
-        {/* Runner 3D scene — only during runner phase (levels 1-5) */}
+        {/* Three.js scene is used exclusively by the runner phase (levels 1-5) */}
         {isRunnerPhase && (
           <Canvas
             dpr={dpr}
