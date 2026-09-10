@@ -5,7 +5,7 @@
  * Player ship at bottom, enemies scroll down from top, auto-fire bullets,
  * tap rocket button for powerful rockets (3 per level).
  */
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useMemo } from 'react';
 import { useStore } from '../../store';
 import { GameStatus, AircraftModel, AIRCRAFT_SPECS, PowerUpType, ROCKETS_PER_LEVEL } from '../../types';
 
@@ -245,7 +245,9 @@ export const SpaceShooter: React.FC = () => {
 
   const aircraftId = (selectedAircraft ?? AircraftModel.ALPHA) as AircraftModel;
   const spec       = AIRCRAFT_SPECS[aircraftId];
-  const cfg        = LVL(level);
+  // Keep the level configuration referentially stable so score/gem/life updates
+  // do not tear down and restart the canvas game loop.
+  const cfg        = useMemo(() => LVL(level), [level]);
 
   /* ── Explosion helper ──────────────────────────────────────────────────── */
   const explode = useCallback((x: number, y: number, color: string, count=22) => {
