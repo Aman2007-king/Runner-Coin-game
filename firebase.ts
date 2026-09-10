@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { getAuth, signInAnonymously } from 'firebase/auth';
 import { getFirestore, collection, addDoc, query, orderBy, limit, getDocs, serverTimestamp } from 'firebase/firestore';
 import firebaseConfig from './firebase-applet-config.json';
 
@@ -7,6 +7,12 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth();
 
+
+export const ensureAnonymousAuth = async () => {
+  if (auth.currentUser) return auth.currentUser;
+  const credential = await signInAnonymously(auth);
+  return credential.user;
+};
 enum OperationType {
   CREATE = 'create',
   UPDATE = 'update',
@@ -61,9 +67,11 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 export const saveHighScore = async (name: string, score: number) => {
   const path = 'leaderboard';
   try {
+    const user = await ensureAnonymousAuth();
     await addDoc(collection(db, path), {
-      name,
-      score,
+      uid: user.uid,
+      name: name.trim().slice(0, 30) || 'Player',
+      score: Math.max(0, Math.floor(score)),
       timestamp: serverTimestamp()
     });
   } catch (error) {
