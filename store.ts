@@ -2,15 +2,13 @@
  * @license SPDX-License-Identifier: Apache-2.0
  */
 import { create } from 'zustand';
-import { saveHighScore } from './firebase';
 import {
   GameStatus, RUN_SPEED_BASE, PowerUpType, SkinType,
   DailyMission, Achievement, SPEED_PER_LETTER, SPEED_PER_LEVEL, MAX_LEVEL,
   // ── NEW ────────────────────────────────────────────────────────────────────
   AircraftModel, AIRCRAFT_SPECS, ROCKETS_PER_LEVEL, MAX_SPACE_LEVEL,
 } from './types';
-// audio imported lazily to avoid circular init
-const getAudio = () => (require('./components/System/Audio') as any).audio;
+import { audio } from './components/System/Audio';
 
 // ─── Timer registry ────────────────────────────────────────────────────────
 const activeTimers = new Set<ReturnType<typeof setTimeout>>();
@@ -29,7 +27,7 @@ const savedXP        = Number(localStorage.getItem('gr_xp'))   || 0;
 const savedSkins     = JSON.parse(localStorage.getItem('gr_skins') || '[\"DEFAULT\"]') as SkinType[];
 
 // ─── Daily missions pool ───────────────────────────────────────────────────
-const MISSION_POOL: Omit<DailyMission, 'current' | 'completed'>[] = [
+const MISSION_POOL: Omit<DailyMission, 'current' | 'completed' | 'claimed'>[] = [
   { id: 'm1', label: 'Gem Hunter',     target: 30,   reward: 200, type: 'gems'     },
   { id: 'm2', label: 'Long Runner',    target: 1000, reward: 300, type: 'distance' },
   { id: 'm3', label: 'Word Wizard',    target: 6,    reward: 250, type: 'letters'  },
@@ -44,11 +42,11 @@ function pickDailyMissions(): DailyMission[] {
   if (cached) {
     try {
       const { date, missions } = JSON.parse(cached);
-      if (date === todayKey) return missions;
+      if (date === todayKey) return (missions as DailyMission[]).map(m => ({ ...m, claimed: m.claimed ?? m.current === -1 }));
     } catch {}
   }
   const shuffled = [...MISSION_POOL].sort(() => Math.random() - 0.5).slice(0, 3);
-  const missions = shuffled.map(m => ({ ...m, current: 0, completed: false }));
+  const missions = shuffled.map(m => ({ ...m, current: 0, completed: false, claimed: false }));
   localStorage.setItem('gr_missions', JSON.stringify({ date: todayKey, missions }));
   return missions;
 }
@@ -212,14 +210,6 @@ const getPlayerLevel = (xp: number) => {
   return lvl;
 };
 
-function submitCompletedScore(score: number) {
-  if (score <= 0) return;
-  const name = localStorage.getItem('gr_player_name')?.trim().slice(0, 30) || 'Player';
-  void saveHighScore(name, score).catch((error) => {
-    console.warn('Unable to save leaderboard score:', error);
-  });
-}
-
 export const useStore = create<GameState>((set, get) => ({
   status:           GameStatus.MENU,
   score:            0,
@@ -291,8 +281,8 @@ export const useStore = create<GameState>((set, get) => ({
   claimMissionReward: (id) => {
     const { dailyMissions, totalGems } = get();
     const m = dailyMissions.find(x => x.id === id);
-    if (!m || !m.completed) return;
-    const newMissions = dailyMissions.map(x => x.id === id ? { ...x, current: -1 } : x);
+    if (!m || !m.completed || m.claimed) return;
+    const newMissions = dailyMissions.map(x => x.id === id ? { ...x, claimed: true } : x);
     const newTotal = totalGems + m.reward;
     localStorage.setItem('gr_gems', String(newTotal));
     saveMissions(newMissions);
@@ -334,7 +324,6 @@ export const useStore = create<GameState>((set, get) => ({
         return a;
       });
       saveAchievements(newAch);
-      submitCompletedScore(score);
       const missions = get().dailyMissions.map(m => {
         let cur = m.current;
         if (m.type === 'distance' && !m.completed) cur = Math.min(m.target, Math.floor(distance));
@@ -387,16 +376,16 @@ export const useStore = create<GameState>((set, get) => ({
   collectPowerUp: (type) => {
     switch (type) {
       case PowerUpType.SHIELD:
-        getAudio().playShieldActivate();
+        audio.playShieldActivate();
         set({ shieldActive: true });
         break;
       case PowerUpType.MAGNET:
-        getAudio().playPowerUp();
+        audio.playPowerUp();
         set({ magnetActive: true });
         safeTimeout(() => set({ magnetActive: false }), 10000);
         break;
       case PowerUpType.SPEED_BOOST:
-        getAudio().playPowerUp();
+        audio.playPowerUp();
         set(s => ({ speedBoostActive: true, speed: s.speed * 1.4 }));
         safeTimeout(() => set(s => ({ speedBoostActive: false, speed: s.speed / 1.4 })), 5000);
         break;
@@ -506,7 +495,7 @@ export const useStore = create<GameState>((set, get) => ({
     const next = !get().isMuted;
     set({ isMuted: next });
     localStorage.setItem('gr_muted', String(next));
-    getAudio().setMuted(next);
+    audio.setMuted(next);
   },
 
   // ── NEW: open aircraft shop when Level 5 is completed ──────────────────────
@@ -625,7 +614,6 @@ export const useStore = create<GameState>((set, get) => ({
         return a;
       });
       saveAchievements(newAch);
-      submitCompletedScore(finalScore);
       set({
         status: GameStatus.VICTORY, score: finalScore, highScore: newHigh,
         xp: newXP, playerLevel: getPlayerLevel(newXP),
@@ -693,7 +681,6 @@ export const useStore = create<GameState>((set, get) => ({
         return a;
       });
       saveAchievements(newAch);
-      submitCompletedScore(score);
       const missions = get().dailyMissions.map(m => {
         let cur = m.current;
         if (m.type === 'distance' && !m.completed) cur = Math.min(m.target, Math.floor(distance));
