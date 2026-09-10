@@ -9,9 +9,6 @@ import { useStore } from '../../store';
 import {
   GameObject, ObjectType, LANE_WIDTH, SPAWN_DISTANCE, REMOVE_DISTANCE,
   GameStatus, GEMINI_COLORS, PowerUpType, MAX_LEVEL,
-  // ── NEW ─────────────────────────────────────────────────────────────────────
-  AircraftModel, AIRCRAFT_SPECS,
-  SPACE_GEM_VALUE, SPACE_GEM_TARGET_BASE, ENEMY_BULLET_SPEED, GEM_MAGNET_RADIUS,
 } from '../../types';
 import { audio } from '../System/Audio';
 
@@ -114,25 +111,12 @@ const ALIEN_B_GEO   = new THREE.CylinderGeometry(0.6, 0.3, 0.3, 8);
 const ALIEN_D_GEO   = new THREE.SphereGeometry(0.4, IS_MOBILE ? 8 : 16, IS_MOBILE ? 8 : 16, 0, Math.PI*2, 0, Math.PI/2);
 const MOVE_OBS_GEO  = new THREE.BoxGeometry(1.8, 1.4, 1.0);
 
-// ── NEW: Space geometries ──────────────────────────────────────────────────────
-const SPACE_GEM_GEO      = new THREE.OctahedronGeometry(0.35, 0);
-const ENEMY_SMALL_GEO    = new THREE.ConeGeometry(0.45, 1.1, 5);
-const ENEMY_MEDIUM_GEO   = new THREE.ConeGeometry(0.75, 1.5, 6);
-const ASTEROID_GEO       = new THREE.DodecahedronGeometry(0.9, 0);
-const ASTEROID_LG_GEO    = new THREE.DodecahedronGeometry(1.4, 0);
-const PLAYER_BULLET_GEO  = new THREE.CylinderGeometry(0.06, 0.06, 0.8, 5);
-const ROCKET_GEO         = new THREE.CylinderGeometry(0.12, 0.08, 1.4, 6);
-const ENEMY_BULLET_GEO   = new THREE.SphereGeometry(0.12, 6, 6);
-
 // ── Main LevelManager ──────────────────────────────────────────────────────────
 export const LevelManager: React.FC = () => {
   const {
     status, speed, collectGem, collectLetter, collectPowerUp,
     collectedLetters, laneCount, setDistance, openShop, level,
     magnetActive, comboMultiplier, breakCombo, isSliding,
-    // ── NEW ───────────────────────────────────────────────────────────────────
-    gamePhase, selectedAircraft, collectSpaceGem, advanceSpaceLevel,
-    spaceGemsCollected, rocketsRemaining,
   } = useStore();
 
   const objects        = useRef<GameObject[]>([]);
@@ -143,12 +127,6 @@ export const LevelManager: React.FC = () => {
   const distTraveled   = useRef(0);
   const nextLetterDist = useRef(LETTER_INTERVAL_BASE);
 
-  // ── NEW: Phase 3 timers ────────────────────────────────────────────────────
-  const enemySpawnTimer    = useRef(0);
-  const asteroidSpawnTimer = useRef(0);
-  const gemSpawnTimer      = useRef(0);
-  const autoFireTimer      = useRef(0);
-
   const [, setPopTick] = useState(0);
   useEffect(() => { popupTrigger = setPopTick; }, []);
 
@@ -157,282 +135,44 @@ export const LevelManager: React.FC = () => {
     if (popupTrigger) popupTrigger(t => t + 1);
   };
 
-  // ── NEW: listen for rocket fire events from Player ─────────────────────────
-  useEffect(() => {
-    const onRocket = (e: CustomEvent) => {
-      if (gamePhase !== 3) return;
-      const px = playerPos.current.x;
-      const py = playerPos.current.y;
-      const pz = playerPos.current.z;
-      objects.current.push({
-        id: uuidv4(), type: ObjectType.PLAYER_ROCKET,
-        position: [px, py, pz - 1],
-        active: true, color: '#ff8800', damage: 5,
-        velocity: [0, 0, -55],
-      });
-      window.dispatchEvent(new CustomEvent('particle-burst', { detail: { position: [px, py, pz], color: '#ff8800' } }));
-      setTick(t => t + 1);
-    };
-    window.addEventListener('player-fire-rocket', onRocket as any);
-    return () => window.removeEventListener('player-fire-rocket', onRocket as any);
-  }, [gamePhase]);
-
-  // Status / level resets
+  // Status / level resets ────────────────────────────────────────────────────
   useEffect(() => {
     const wasGameOver = prevStatus.current === GameStatus.GAME_OVER;
-    const wasVictory  = prevStatus.current === GameStatus.VICTORY;
-    const nowPlaying  = status === GameStatus.PLAYING;
-    const levelUp     = level !== prevLevel.current && nowPlaying;
+    const wasVictory = prevStatus.current === GameStatus.VICTORY;
+    const nowPlaying = status === GameStatus.PLAYING;
+    const levelUp = level !== prevLevel.current && nowPlaying;
 
-    if ((wasGameOver || wasVictory || prevStatus.current === GameStatus.MENU || prevStatus.current === GameStatus.SPACE_TRANSITION || prevStatus.current === GameStatus.AIRCRAFT_SHOP) && nowPlaying) {
-      objects.current = []; setTick(t => t+1);
-      distTraveled.current = 0; nextLetterDist.current = getLetterInterval(1);
-      enemySpawnTimer.current    = 1.5;
-      asteroidSpawnTimer.current = 2.0;
-      gemSpawnTimer.current      = 0.5;
-      autoFireTimer.current      = 0;
+    if ((wasGameOver || wasVictory || prevStatus.current === GameStatus.MENU) && nowPlaying) {
+      objects.current = [];
+      setTick(t => t + 1);
+      distTraveled.current = 0;
+      nextLetterDist.current = getLetterInterval(1);
     } else if (levelUp && level > 1) {
-      if (gamePhase === 1) {
-        objects.current = objects.current.filter(o => o.position[2] > -80);
-        // Only spawn mid-level shop portal for levels 2-4 (NOT level 5 — level 5 opens aircraft shop)
-        if (level <= 4) {
-          objects.current.push({ id: uuidv4(), type: ObjectType.SHOP_PORTAL, position: [0,0,-100], active: true });
-        }
-        nextLetterDist.current = distTraveled.current - SPAWN_DISTANCE + getLetterInterval(level);
-      } else {
-        // Space level up: clear all hazards
-        objects.current = objects.current.filter(o =>
-          o.type === ObjectType.SPACE_GEM
-        );
-        enemySpawnTimer.current    = 1.5;
-        asteroidSpawnTimer.current = 2.0;
+      objects.current = objects.current.filter(o => o.position[2] > -80);
+      if (level <= 4) {
+        objects.current.push({ id: uuidv4(), type: ObjectType.SHOP_PORTAL, position: [0,0,-100], active: true });
       }
-      setTick(t => t+1);
+      nextLetterDist.current = distTraveled.current - SPAWN_DISTANCE + getLetterInterval(level);
+      setTick(t => t + 1);
     } else if (!nowPlaying) {
       setDistance(Math.floor(distTraveled.current));
     }
     prevStatus.current = status;
-    prevLevel.current  = level;
-  }, [status, level, gamePhase]);
+    prevLevel.current = level;
+  }, [status, level]);
 
   useFrame((state, delta) => {
     if (status !== GameStatus.PLAYING) return;
     const dt   = Math.min(delta, MAX_DELTA);
-    const dist = (gamePhase === 3 ? 15 : speed) * dt; // space uses fixed scroll
-    distTraveled.current += dist;
+    distTraveled.current += speed * dt;
 
     // Player world pos
     playerPos.current.set(0, 0, 0);
     const pg = state.scene.getObjectByName('PlayerGroup');
     if (pg && pg.children[0]) pg.children[0].getWorldPosition(playerPos.current);
 
-    // ── NEW: Phase 3 frame update ───────────────────────────────────────────
-    if (gamePhase === 3) {
-      updateSpacePhase(dt, state.clock.elapsedTime);
-      return;
-    }
-
-    // ── Phase 1: original runner update (unchanged) ────────────────────────
     updateRunnerPhase(dt);
   });
-
-  // ── NEW: space phase update function ──────────────────────────────────────
-  const updateSpacePhase = (dt: number, elapsed: number) => {
-    const spLvl  = level - 5;              // 1-5 difficulty multiplier
-    const spec   = selectedAircraft ? AIRCRAFT_SPECS[selectedAircraft] : AIRCRAFT_SPECS[AircraftModel.ALPHA];
-    const px     = playerPos.current.x;
-    const py     = playerPos.current.y;
-    const pz     = playerPos.current.z;
-    let changed  = false;
-    const kept:  GameObject[] = [];
-
-    // ── Auto-fire player bullets ────────────────────────────────────────────
-    autoFireTimer.current -= dt;
-    if (autoFireTimer.current <= 0) {
-      autoFireTimer.current = 0.13;
-      if (spec.doubleBlasters) {
-        objects.current.push(
-          { id: uuidv4(), type: ObjectType.PLAYER_BULLET, position: [px - 0.35, py, pz - 1], active: true, color: spec.color, velocity: [0, 0, -60] },
-          { id: uuidv4(), type: ObjectType.PLAYER_BULLET, position: [px + 0.35, py, pz - 1], active: true, color: spec.color, velocity: [0, 0, -60] },
-        );
-      } else {
-        objects.current.push({ id: uuidv4(), type: ObjectType.PLAYER_BULLET, position: [px, py, pz - 1], active: true, color: spec.color, velocity: [0, 0, -60] });
-      }
-      changed = true;
-    }
-
-    // ── Enemy spawn ─────────────────────────────────────────────────────────
-    enemySpawnTimer.current -= dt;
-    if (enemySpawnTimer.current <= 0) {
-      const interval = Math.max(0.5, 2.2 - spLvl * 0.28);
-      enemySpawnTimer.current = interval + Math.random() * 0.4;
-      const isMedium = Math.random() < 0.3 + spLvl * 0.05;
-      const count    = Math.random() < 0.35 + spLvl * 0.06 ? 2 : 1;
-      const maxLane  = Math.floor(laneCount / 2);
-      for (let k = 0; k < count; k++) {
-        const ex = (Math.floor(Math.random() * (maxLane * 2 + 1)) - maxLane) * LANE_WIDTH;
-        const hp = isMedium ? 3 + spLvl : 1;
-        objects.current.push({
-          id: uuidv4(),
-          type: isMedium ? ObjectType.SPACE_ENEMY_MEDIUM : ObjectType.SPACE_ENEMY_SMALL,
-          position: [ex, 0, pz - SPAWN_DISTANCE - Math.random() * 20],
-          active: true, color: '#ff2200',
-          hp, maxHp: hp,
-          fireTimer: 1.2 + Math.random() * 1.5,
-          velocity: [0, 0, 10 + spLvl * 2 + Math.random() * 4],
-        });
-      }
-      changed = true;
-    }
-
-    // ── Asteroid spawn ──────────────────────────────────────────────────────
-    asteroidSpawnTimer.current -= dt;
-    if (asteroidSpawnTimer.current <= 0) {
-      asteroidSpawnTimer.current = Math.max(0.6, 1.8 - spLvl * 0.12) + Math.random() * 0.3;
-      const maxLane = Math.floor(laneCount / 2);
-      const ax = (Math.floor(Math.random() * (maxLane * 2 + 1)) - maxLane) * LANE_WIDTH + (Math.random() - 0.5) * LANE_WIDTH * 0.5;
-      const big = Math.random() < 0.25;
-      objects.current.push({
-        id: uuidv4(), type: ObjectType.SPACE_ASTEROID,
-        position: [ax, 0, pz - SPAWN_DISTANCE],
-        active: true, color: '#887755',
-        radius: big ? 1.3 : 0.85,
-        hp: big ? 3 : 1,
-        velocity: [0, 0, 8 + spLvl * 1.5 + Math.random() * 3],
-      });
-      changed = true;
-    }
-
-    // ── Space gem spawn ─────────────────────────────────────────────────────
-    gemSpawnTimer.current -= dt;
-    if (gemSpawnTimer.current <= 0) {
-      gemSpawnTimer.current = 0.35 + Math.random() * 0.35;
-      const maxLane = Math.floor(laneCount / 2);
-      const gx = (Math.floor(Math.random() * (maxLane * 2 + 1)) - maxLane) * LANE_WIDTH;
-      objects.current.push({
-        id: uuidv4(), type: ObjectType.SPACE_GEM,
-        position: [gx, 0, pz - SPAWN_DISTANCE + 20],
-        active: true, color: '#00ffcc', points: SPACE_GEM_VALUE,
-      });
-      changed = true;
-    }
-
-    // ── Update & collide all objects ────────────────────────────────────────
-    for (const obj of objects.current) {
-      if (!obj.active) continue;
-      const vel = obj.velocity ?? [0, 0, 0];
-
-      // Beta hull magnet — pulls space gems
-      if (obj.type === ObjectType.SPACE_GEM && spec.magnetizedHull) {
-        const dx = px - obj.position[0], dz = pz - obj.position[2];
-        const d  = Math.sqrt(dx*dx + dz*dz);
-        if (d < GEM_MAGNET_RADIUS) {
-          const pull = 30 * dt;
-          obj.position[0] += (dx / d) * pull;
-          obj.position[2] += (dz / d) * pull;
-        }
-      }
-
-      // Move
-      obj.position[0] += vel[0] * dt;
-      obj.position[1] += vel[1] * dt;
-      obj.position[2] += vel[2] * dt;
-
-      // Enemy fires bullets
-      if ((obj.type === ObjectType.SPACE_ENEMY_SMALL || obj.type === ObjectType.SPACE_ENEMY_MEDIUM) && obj.fireTimer !== undefined) {
-        obj.fireTimer -= dt;
-        if (obj.fireTimer <= 0) {
-          const fireInterval = Math.max(0.7, 2.0 - spLvl * 0.2);
-          obj.fireTimer = fireInterval + Math.random();
-          const dx = px - obj.position[0], dz = pz - obj.position[2];
-          const mag = Math.sqrt(dx*dx + dz*dz) || 1;
-          objects.current.push({
-            id: uuidv4(), type: ObjectType.ENEMY_BULLET,
-            position: [...obj.position] as [number, number, number],
-            active: true, color: '#ff4400',
-            velocity: [(dx/mag) * ENEMY_BULLET_SPEED, 0, (dz/mag) * ENEMY_BULLET_SPEED],
-          });
-          changed = true;
-        }
-      }
-
-      const removeZ = pz + REMOVE_DISTANCE;
-      if (obj.position[2] > removeZ) { obj.active = false; changed = true; }
-
-      if (!obj.active) { kept.push(obj); continue; }
-
-      const dx  = obj.position[0] - px;
-      const dz  = obj.position[2] - pz;
-      const dist2D = Math.sqrt(dx*dx + dz*dz);
-
-      // ── Collision checks ─────────────────────────────────────────────────
-      if (obj.type === ObjectType.SPACE_GEM) {
-        if (dist2D < 1.1) {
-          audio.playGemCollect();
-          collectSpaceGem(obj.points ?? SPACE_GEM_VALUE);
-          addPopup(`+${(obj.points ?? SPACE_GEM_VALUE) * useStore.getState().comboMultiplier}`, obj.position[0], obj.position[1]);
-          window.dispatchEvent(new CustomEvent('particle-burst', { detail: { position: obj.position, color: obj.color } }));
-          obj.active = false; changed = true;
-
-          // Check space level gem target
-          const needed = (level - 5) * SPACE_GEM_TARGET_BASE + SPACE_GEM_TARGET_BASE;
-          if (useStore.getState().spaceGemsCollected >= needed) {
-            advanceSpaceLevel();
-          }
-        }
-      } else if (obj.type === ObjectType.SPACE_ENEMY_SMALL || obj.type === ObjectType.SPACE_ENEMY_MEDIUM) {
-        if (dist2D < 1.0) {
-          window.dispatchEvent(new Event('player-hit'));
-          window.dispatchEvent(new CustomEvent('particle-burst', { detail: { position: obj.position, color: '#ff0000' } }));
-          obj.active = false; changed = true;
-        }
-      } else if (obj.type === ObjectType.SPACE_ASTEROID) {
-        const r = obj.radius ?? 0.85;
-        if (dist2D < r + 0.5) {
-          window.dispatchEvent(new Event('player-hit'));
-          window.dispatchEvent(new CustomEvent('particle-burst', { detail: { position: obj.position, color: '#887755' } }));
-          obj.active = false; changed = true; breakCombo();
-        }
-      } else if (obj.type === ObjectType.ENEMY_BULLET) {
-        if (dist2D < 0.55) {
-          window.dispatchEvent(new Event('player-hit'));
-          obj.active = false; changed = true; breakCombo();
-        }
-      } else if (obj.type === ObjectType.PLAYER_BULLET || obj.type === ObjectType.PLAYER_ROCKET) {
-        // Check vs enemies
-        for (const target of objects.current) {
-          if (!target.active) continue;
-          const isEnemy = target.type === ObjectType.SPACE_ENEMY_SMALL || target.type === ObjectType.SPACE_ENEMY_MEDIUM;
-          const isRock  = target.type === ObjectType.SPACE_ASTEROID;
-          if (!isEnemy && !isRock) continue;
-          const bx   = obj.position[0] - target.position[0];
-          const bz   = obj.position[2] - target.position[2];
-          const hit  = Math.sqrt(bx*bx + bz*bz);
-          const hrad = isRock ? (target.radius ?? 0.85) : (target.type === ObjectType.SPACE_ENEMY_MEDIUM ? 0.85 : 0.55);
-          const isDmg = obj.type === ObjectType.PLAYER_ROCKET ? 5 : 1;
-
-          if (hit < hrad + 0.25) {
-            target.hp = (target.hp ?? 1) - isDmg;
-            window.dispatchEvent(new CustomEvent('particle-burst', { detail: { position: target.position, color: isRock ? '#887755' : '#ff4400' } }));
-            if (target.hp <= 0) {
-              target.active = false;
-              const pts = isRock ? 80 : (target.type === ObjectType.SPACE_ENEMY_MEDIUM ? 300 : 150);
-              const earned = pts * useStore.getState().comboMultiplier;
-              useStore.getState().addScore(earned);
-              addPopup(`+${earned}`, target.position[0], target.position[1]);
-              window.dispatchEvent(new CustomEvent('particle-burst', { detail: { position: target.position, color: isRock ? '#cc8844' : '#ff2200' } }));
-            }
-            obj.active = false; changed = true;
-            break;
-          }
-        }
-      }
-
-      kept.push(obj);
-    }
-
-    if (changed) { objects.current = kept; setTick(t => t + 1); }
-  };
 
   // ── Phase 1 runner update (original logic, unchanged) ─────────────────────
   const updateRunnerPhase = (dt: number) => {
@@ -625,7 +365,7 @@ export const LevelManager: React.FC = () => {
   return (
     <group>
       <ParticleSystem />
-      {objects.current.map(obj => obj.active ? <GameEntity key={obj.id} data={obj} level={level} gamePhase={gamePhase} /> : null)}
+      {objects.current.map(obj => obj.active ? <GameEntity key={obj.id} data={obj} level={level} /> : null)}
     </group>
   );
 };
@@ -639,7 +379,7 @@ function getGemMat(color: string) {
   return GEM_MAT_CACHE[color];
 }
 
-const GameEntity: React.FC<{ data: GameObject; level: number; gamePhase: 1 | 3 }> = React.memo(({ data, level, gamePhase }) => {
+const GameEntity: React.FC<{ data: GameObject; level: number }> = React.memo(({ data, level }) => {
   const groupRef  = useRef<THREE.Group>(null);
   const visualRef = useRef<THREE.Group>(null);
 
@@ -650,25 +390,6 @@ const GameEntity: React.FC<{ data: GameObject; level: number; gamePhase: 1 | 3 }
     const dt = Math.min(delta, MAX_DELTA);
 
     groupRef.current.position.set(data.position[0], 0, data.position[2]);
-
-    // ── NEW: Phase 3 entity animations ─────────────────────────────────────
-    if (gamePhase === 3) {
-      if (data.type === ObjectType.SPACE_GEM) {
-        visualRef.current.rotation.y += dt * 3;
-        visualRef.current.rotation.x += dt * 1.5;
-        visualRef.current.position.y = data.position[1] + Math.sin(state.clock.elapsedTime * 4 + data.position[0]) * 0.15;
-      } else if (data.type === ObjectType.SPACE_ENEMY_SMALL || data.type === ObjectType.SPACE_ENEMY_MEDIUM) {
-        visualRef.current.rotation.y += dt * 2;
-        visualRef.current.position.y = data.position[1] + Math.sin(state.clock.elapsedTime * 3 + data.position[0]) * 0.2;
-      } else if (data.type === ObjectType.SPACE_ASTEROID) {
-        visualRef.current.rotation.x += dt * 0.7;
-        visualRef.current.rotation.z += dt * 0.5;
-        visualRef.current.position.y = data.position[1];
-      } else {
-        visualRef.current.position.y = data.position[1];
-      }
-      return;
-    }
 
     // Phase 1 original animations (unchanged)
     if (data.type === ObjectType.GEM || data.type === ObjectType.POWERUP || data.type === ObjectType.LETTER) {
@@ -691,84 +412,7 @@ const GameEntity: React.FC<{ data: GameObject; level: number; gamePhase: 1 | 3 }
     <group ref={groupRef}>
       <group ref={visualRef} position={[0, data.position[1], 0]}>
 
-        {/* ── NEW: Phase 3 entity meshes ───────────────────────────────────── */}
-
-        {data.type === ObjectType.SPACE_GEM && (
-          <group>
-            <mesh geometry={SPACE_GEM_GEO} material={getGemMat(data.color ?? '#00ffcc')} />
-            <mesh geometry={SPACE_GEM_GEO} scale={[1.4, 1.4, 1.4]}>
-              <meshBasicMaterial color={data.color ?? '#00ffcc'} transparent opacity={0.15} />
-            </mesh>
-          </group>
-        )}
-
-        {data.type === ObjectType.SPACE_ENEMY_SMALL && (
-          <group rotation={[Math.PI, 0, 0]}>
-            <mesh geometry={ENEMY_SMALL_GEO}>
-              <meshStandardMaterial color="#220000" roughness={0.3} metalness={0.9} />
-            </mesh>
-            <mesh scale={[1.05, 1.05, 1.05]} geometry={ENEMY_SMALL_GEO}>
-              <meshBasicMaterial color="#ff2200" wireframe transparent opacity={0.3} />
-            </mesh>
-          </group>
-        )}
-
-        {data.type === ObjectType.SPACE_ENEMY_MEDIUM && (
-          <group rotation={[Math.PI, 0, 0]}>
-            <mesh geometry={ENEMY_MEDIUM_GEO}>
-              <meshStandardMaterial color="#1a0011" roughness={0.3} metalness={0.9} />
-            </mesh>
-            <mesh scale={[1.05, 1.05, 1.05]} geometry={ENEMY_MEDIUM_GEO}>
-              <meshBasicMaterial color="#ff44aa" wireframe transparent opacity={0.35} />
-            </mesh>
-            {/* HP bar above medium enemy */}
-            {(data.hp ?? 1) < (data.maxHp ?? 1) && (
-              <mesh position={[0, 1.2, 0]} rotation={[-Math.PI/2, 0, 0]}>
-                <planeGeometry args={[1.4 * (data.hp ?? 1) / (data.maxHp ?? 1), 0.12]} />
-                <meshBasicMaterial color="#ff4400" />
-              </mesh>
-            )}
-          </group>
-        )}
-
-        {data.type === ObjectType.SPACE_ASTEROID && (
-          <group>
-            <mesh geometry={(data.radius ?? 0.85) > 1 ? ASTEROID_LG_GEO : ASTEROID_GEO}>
-              <meshStandardMaterial color="#664433" roughness={0.95} metalness={0.05} flatShading />
-            </mesh>
-            <mesh scale={[1.04, 1.04, 1.04]} geometry={(data.radius ?? 0.85) > 1 ? ASTEROID_LG_GEO : ASTEROID_GEO}>
-              <meshBasicMaterial color="#887755" wireframe transparent opacity={0.2} />
-            </mesh>
-          </group>
-        )}
-
-        {data.type === ObjectType.PLAYER_BULLET && (
-          <group rotation={[Math.PI/2, 0, 0]}>
-            <mesh geometry={PLAYER_BULLET_GEO}>
-              <meshBasicMaterial color={data.color ?? '#00ffff'} />
-            </mesh>
-          </group>
-        )}
-
-        {data.type === ObjectType.PLAYER_ROCKET && (
-          <group rotation={[Math.PI/2, 0, 0]}>
-            <mesh geometry={ROCKET_GEO}>
-              <meshStandardMaterial color="#ff6600" emissive="#ff4400" emissiveIntensity={2} metalness={0.7} />
-            </mesh>
-            <mesh position={[0, -0.8, 0]}>
-              <coneGeometry args={[0.2, 0.5, 5]} />
-              <meshBasicMaterial color="#ffaa00" transparent opacity={0.8} />
-            </mesh>
-          </group>
-        )}
-
-        {data.type === ObjectType.ENEMY_BULLET && (
-          <mesh geometry={ENEMY_BULLET_GEO}>
-            <meshBasicMaterial color={data.color ?? '#ff4400'} />
-          </mesh>
-        )}
-
-        {/* ── Phase 1 entity meshes (original, unchanged) ─────────────────── */}
+        {/* Runner entity meshes */}
 
         {data.type === ObjectType.OBSTACLE && (
           <group>
