@@ -2,6 +2,7 @@
  * @license SPDX-License-Identifier: Apache-2.0
  */
 import { create } from 'zustand';
+import { saveHighScore } from './firebase';
 import {
   GameStatus, RUN_SPEED_BASE, PowerUpType, SkinType,
   DailyMission, Achievement, SPEED_PER_LETTER, SPEED_PER_LEVEL, MAX_LEVEL,
@@ -211,6 +212,14 @@ const getPlayerLevel = (xp: number) => {
   return lvl;
 };
 
+function submitCompletedScore(score: number) {
+  if (score <= 0) return;
+  const name = localStorage.getItem('gr_player_name')?.trim().slice(0, 30) || 'Player';
+  void saveHighScore(name, score).catch((error) => {
+    console.warn('Unable to save leaderboard score:', error);
+  });
+}
+
 export const useStore = create<GameState>((set, get) => ({
   status:           GameStatus.MENU,
   score:            0,
@@ -325,6 +334,7 @@ export const useStore = create<GameState>((set, get) => ({
         return a;
       });
       saveAchievements(newAch);
+      submitCompletedScore(score);
       const missions = get().dailyMissions.map(m => {
         let cur = m.current;
         if (m.type === 'distance' && !m.completed) cur = Math.min(m.target, Math.floor(distance));
@@ -615,6 +625,7 @@ export const useStore = create<GameState>((set, get) => ({
         return a;
       });
       saveAchievements(newAch);
+      submitCompletedScore(finalScore);
       set({
         status: GameStatus.VICTORY, score: finalScore, highScore: newHigh,
         xp: newXP, playerLevel: getPlayerLevel(newXP),
@@ -682,6 +693,7 @@ export const useStore = create<GameState>((set, get) => ({
         return a;
       });
       saveAchievements(newAch);
+      submitCompletedScore(score);
       const missions = get().dailyMissions.map(m => {
         let cur = m.current;
         if (m.type === 'distance' && !m.completed) cur = Math.min(m.target, Math.floor(distance));
