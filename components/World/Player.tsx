@@ -7,16 +7,14 @@ import * as THREE from 'three';
 import { useStore } from '../../store';
 import { LANE_WIDTH, GameStatus, SkinType, AircraftModel, AIRCRAFT_SPECS } from '../../types';
 import { audio } from '../System/Audio';
-
-// ── IS_MOBILE must be declared FIRST before any usage ─────────────────────────
-const IS_MOBILE = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) || window.innerWidth < 768;
+import { IS_MOBILE } from '../../utils/device';
 
 const GRAVITY    = 50;
 const JUMP_FORCE = 16;
 const MAX_DELTA  = 0.05;
 const SLIDE_H    = 0.4;
 
-// ── Static geometries (declared AFTER IS_MOBILE) ──────────────────────────────
+// ── Static geometries ──────────────────────────────────────────────────────
 const TORSO_GEO  = new THREE.CylinderGeometry(0.25, 0.15, 0.6, 4);
 const HEAD_GEO   = new THREE.BoxGeometry(0.25, 0.3, 0.3);
 const ARM_GEO    = new THREE.BoxGeometry(0.12, 0.6, 0.12);
