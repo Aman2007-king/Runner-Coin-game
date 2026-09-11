@@ -6,8 +6,8 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useStore } from '../../store';
 import { LANE_WIDTH, BiomeType, BIOME_BY_LEVEL, BIOME_COLORS } from '../../types';
+import { IS_MOBILE } from '../../utils/device';
 
-const IS_MOBILE = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) || window.innerWidth < 768;
 const STAR_COUNT = IS_MOBILE ? 800 : 2000;
 
 // ── Star field ────────────────────────────────────────────────────────────────
