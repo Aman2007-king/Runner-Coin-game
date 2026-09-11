@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { Environment } from './components/World/Environment';
 import { Player } from './components/World/Player';
 import { LevelManager } from './components/World/LevelManager';
+import { Effects } from './components/World/Effects';
 import { HUD } from './components/UI/HUD';
 import { useStore } from './store';
 import { GameStatus } from './types';
@@ -45,6 +46,7 @@ const RunnerScene: React.FC = () => (
       <Player />
     </group>
     <LevelManager />
+    <Effects />
   </>
 );
 
