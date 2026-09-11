@@ -7,8 +7,7 @@
 import React from 'react';
 import { EffectComposer, Bloom, Vignette, Noise } from '@react-three/postprocessing';
 import { BlendFunction } from 'postprocessing';
-
-const IS_MOBILE = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) || window.innerWidth < 768;
+import { IS_MOBILE } from '../../utils/device';
 
 export const Effects: React.FC = () => {
   return (
