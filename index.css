@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background-color: #050011;
+  font-family: 'Rajdhani', sans-serif;
+  touch-action: none; /* Prevent pull-to-refresh on mobile */
+}
+
+.font-cyber {
+  font-family: 'Orbitron', sans-serif;
+}
