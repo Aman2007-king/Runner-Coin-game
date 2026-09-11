@@ -6,6 +6,7 @@ import {
   Heart, Zap, Trophy, MapPin, Diamond, Rocket, ArrowUpCircle,
   Shield, Activity, PlusCircle, Play, Palette, Pause,
   Volume2, VolumeX, Star, Award, Target, CheckCircle2, Crosshair,
+  Crown, Send, Loader2,
 } from 'lucide-react';
 import { useStore } from '../../store';
 import {
@@ -14,6 +15,7 @@ import {
   BIOME_BY_LEVEL, BIOME_COLORS,
 } from '../../types';
 import { audio } from '../System/Audio';
+import { saveHighScore, getLeaderboard, LeaderboardEntry } from '../../firebase';
 
 // ─── Mute button ──────────────────────────────────────────────────────────────
 const MuteBtn: React.FC = () => {
@@ -147,6 +149,106 @@ const AchievementsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   );
 };
 
+// ─── Global leaderboard panel ──────────────────────────────────────────────
+const LeaderboardPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const [entries, setEntries] = useState<LeaderboardEntry[] | null>(null);
+  const [failed, setFailed]   = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getLeaderboard()
+      .then(rows => { if (!cancelled) setEntries(rows); })
+      .catch(() => { if (!cancelled) setFailed(true); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const rankStyle = (i: number) =>
+    i === 0 ? 'border-yellow-500 bg-yellow-900/20' :
+    i === 1 ? 'border-gray-400 bg-gray-700/30'   :
+    i === 2 ? 'border-orange-700 bg-orange-900/20' :
+              'border-gray-800 bg-gray-900/50';
+
+  return (
+    <div className="absolute inset-0 bg-black/95 z-[110] text-white pointer-events-auto flex flex-col items-center justify-center p-6">
+      <h2 className="text-3xl font-black text-yellow-400 mb-6 tracking-widest flex items-center gap-2">
+        <Crown className="w-7 h-7" /> LEADERBOARD
+      </h2>
+      <div className="w-full max-w-md space-y-2 mb-8 max-h-[55vh] overflow-y-auto">
+        {entries === null && !failed && (
+          <div className="flex items-center justify-center gap-2 text-gray-400 py-10">
+            <Loader2 className="w-5 h-5 animate-spin" /> Loading scores…
+          </div>
+        )}
+        {failed && (
+          <div className="text-red-400 text-center py-10 text-sm">Couldn't load the leaderboard. Check your connection and try again.</div>
+        )}
+        {entries && entries.length === 0 && (
+          <div className="text-gray-500 text-center py-10">No scores yet — be the first!</div>
+        )}
+        {entries && entries.map((e, i) => (
+          <div key={i} className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${rankStyle(i)}`}>
+            <span className="w-6 text-center font-black text-gray-400">{i + 1}</span>
+            <span className="flex-1 font-bold truncate">{e.name}</span>
+            <span className="font-mono font-bold text-cyan-400">{e.score.toLocaleString()}</span>
+          </div>
+        ))}
+      </div>
+      <button onClick={onClose} className="px-10 py-3 bg-white text-black font-black rounded-full hover:scale-105 transition-all">BACK</button>
+    </div>
+  );
+};
+
+// ─── Submit-score form (used on Game Over / Victory) ───────────────────────
+const ScoreSubmit: React.FC<{ score: number }> = ({ score }) => {
+  const [name, setName]   = useState(() => localStorage.getItem('gr_playername') || '');
+  const [state, setState] = useState<'idle' | 'submitting' | 'done' | 'error'>('idle');
+  const [msg, setMsg]     = useState('');
+
+  const submit = async () => {
+    if (!name.trim() || state === 'submitting' || state === 'done') return;
+    setState('submitting');
+    const res = await saveHighScore(name, score);
+    if (res.ok === true) {
+      localStorage.setItem('gr_playername', name.trim().slice(0, 30));
+      setState('done');
+    } else {
+      setState('error');
+      setMsg(res.message);
+    }
+  };
+
+  if (state === 'done') {
+    return (
+      <div className="flex items-center gap-2 text-green-400 font-bold text-sm mb-3">
+        <CheckCircle2 className="w-4 h-4" /> Submitted to the global leaderboard!
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full max-w-xs flex flex-col gap-1.5 mb-3">
+      <div className="flex gap-2">
+        <input
+          value={name}
+          maxLength={30}
+          onChange={e => setName(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') submit(); }}
+          placeholder="Your name"
+          className="flex-1 min-w-0 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-cyan-500"
+        />
+        <button
+          onClick={submit}
+          disabled={!name.trim() || state === 'submitting'}
+          className="flex items-center gap-1.5 px-4 py-2 bg-cyan-600 rounded-lg font-bold text-sm hover:bg-cyan-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+          {state === 'submitting' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+          Submit
+        </button>
+      </div>
+      {state === 'error' && <div className="text-red-400 text-xs">{msg}</div>}
+    </div>
+  );
+};
+
 // ─── Shop screen ──────────────────────────────────────────────────────────────
 const ShopScreen: React.FC = () => {
   const { score, buyItem, closeShop, hasDoubleJump, hasImmortality } = useStore();
@@ -251,6 +353,7 @@ const MenuScreen: React.FC = () => {
   const [showSkins, setShowSkins] = useState(false);
   const [showAch,   setShowAch  ] = useState(false);
   const [showMiss,  setShowMiss ] = useState(false);
+  const [showLB,    setShowLB   ] = useState(false);
 
   return (
     <div className="absolute inset-0 flex items-center justify-center z-[100] bg-black/80 backdrop-blur-sm pointer-events-auto">
@@ -275,6 +378,7 @@ const MenuScreen: React.FC = () => {
             <button onClick={() => setShowSkins(true)} className="p-2 bg-white/5 border border-white/10 rounded-full hover:bg-white/10 transition-all"><Palette className="text-pink-500 w-5 h-5" /></button>
             <button onClick={() => setShowAch(true)}   className="p-2 bg-white/5 border border-white/10 rounded-full hover:bg-white/10 transition-all"><Award className="text-yellow-500 w-5 h-5" /></button>
             <button onClick={() => setShowMiss(true)}  className="p-2 bg-white/5 border border-white/10 rounded-full hover:bg-white/10 transition-all"><Target className="text-cyan-500 w-5 h-5" /></button>
+            <button onClick={() => setShowLB(true)}    className="p-2 bg-white/5 border border-white/10 rounded-full hover:bg-white/10 transition-all"><Crown className="text-yellow-400 w-5 h-5" /></button>
             <MuteBtn />
           </div>
 
@@ -284,6 +388,7 @@ const MenuScreen: React.FC = () => {
       {showSkins && <SkinShop onClose={() => setShowSkins(false)} />}
       {showAch   && <AchievementsPanel onClose={() => setShowAch(false)} />}
       {showMiss  && <MissionsPanel onClose={() => setShowMiss(false)} />}
+      {showLB    && <LeaderboardPanel onClose={() => setShowLB(false)} />}
     </div>
   );
 };
@@ -292,6 +397,7 @@ const MenuScreen: React.FC = () => {
 const GameOverScreen: React.FC = () => {
   const { score, highScore, restartGame, gemsCollected, distance, level, achievements, newAchievements, dismissAchievements, xp, playerLevel } = useStore();
   const [showAch, setShowAch] = useState(false);
+  const [showLB,  setShowLB ] = useState(false);
   const newUnlocked = achievements.filter(a => newAchievements.includes(a.id));
 
   return (
@@ -320,11 +426,16 @@ const GameOverScreen: React.FC = () => {
           </div>
         ))}
       </div>
+      <ScoreSubmit score={score} />
       <button onClick={() => { audio.init(); restartGame(); }}
         className="px-10 py-4 bg-gradient-to-r from-cyan-500 to-blue-600 font-black text-xl rounded-xl hover:scale-105 transition-all shadow-[0_0_20px_rgba(0,255,255,0.3)] mb-3">
         RUN AGAIN ▶
       </button>
+      <button onClick={() => setShowLB(true)} className="flex items-center gap-1.5 text-gray-400 hover:text-yellow-400 text-sm font-bold transition-colors">
+        <Crown className="w-4 h-4" /> View Leaderboard
+      </button>
       {showAch && <AchievementsPanel onClose={() => { setShowAch(false); dismissAchievements(); }} />}
+      {showLB  && <LeaderboardPanel onClose={() => setShowLB(false)} />}
     </div>
   );
 };
@@ -332,6 +443,7 @@ const GameOverScreen: React.FC = () => {
 // ─── Victory ──────────────────────────────────────────────────────────────────
 const VictoryScreen: React.FC = () => {
   const { score, restartGame, gemsCollected, distance } = useStore();
+  const [showLB, setShowLB] = useState(false);
   return (
     <div className="absolute inset-0 bg-black/95 z-[100] text-white pointer-events-auto flex flex-col items-center justify-center p-6">
       <Rocket className="w-20 h-20 text-yellow-400 mb-4 animate-bounce drop-shadow-[0_0_20px_gold]" />
@@ -348,10 +460,15 @@ const VictoryScreen: React.FC = () => {
           <div className="text-xs text-gray-400">DIST</div><div className="text-xl font-bold text-purple-400">{Math.floor(distance)}</div>
         </div>
       </div>
+      <ScoreSubmit score={score} />
       <button onClick={() => { audio.init(); restartGame(); }}
-        className="px-10 py-4 bg-white text-black font-black text-xl rounded-xl hover:scale-105 transition-all shadow-[0_0_40px_rgba(255,255,255,0.2)]">
+        className="px-10 py-4 bg-white text-black font-black text-xl rounded-xl hover:scale-105 transition-all shadow-[0_0_40px_rgba(255,255,255,0.2)] mb-3">
         PLAY AGAIN ▶
       </button>
+      <button onClick={() => setShowLB(true)} className="flex items-center gap-1.5 text-gray-400 hover:text-yellow-400 text-sm font-bold transition-colors">
+        <Crown className="w-4 h-4" /> View Leaderboard
+      </button>
+      {showLB && <LeaderboardPanel onClose={() => setShowLB(false)} />}
     </div>
   );
 };
