@@ -13,8 +13,9 @@ import { useStore } from './store';
 import { GameStatus } from './types';
 import { audio } from './components/System/Audio';
 import ErrorBoundary from './components/System/ErrorBoundary';
+import { IS_MOBILE } from './utils/device';
 
-const IS_MOBILE = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) || window.innerWidth < 768;
+
 
 const CameraController: React.FC = () => {
   const { camera, size } = useThree();
