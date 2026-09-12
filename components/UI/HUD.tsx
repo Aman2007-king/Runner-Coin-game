@@ -483,7 +483,7 @@ const PlayingHUD: React.FC = () => {
   } = useStore();
 
   const TARGET = ['G','E','M','I','N','I'];
-  const biome  = BIOME_BY_LEVEL[level] ?? BiomeType.NEON_CITY;
+  const biome  = BIOME_BY_LEVEL[level] ?? BiomeType.JUNGLE_RUINS;
   const cols   = BIOME_COLORS[biome];
 
   return (
@@ -656,17 +656,32 @@ const SpaceTransitionScreen: React.FC = () => (
 // ── Space Shooter HUD (levels 6-10) ────────────────────────────────────────
 const SpaceShooterHUD: React.FC = () => {
   const { score, lives, maxLives, level, gemsCollected, rocketsRemaining,
-          comboMultiplier, pauseGame, selectedAircraft, spaceGemsCollected } = useStore();
+          comboMultiplier, pauseGame, selectedAircraft, spaceGemsCollected, spaceKills } = useStore();
   const spec = selectedAircraft ? AIRCRAFT_SPECS[selectedAircraft] : AIRCRAFT_SPECS[AircraftModel.ALPHA];
   const d = level - 5;
-  const killTarget = 10 + d * 8;
+  const gemsNeeded = d * 30 + 30;
 
   const handleRocket = () => {
     window.dispatchEvent(new Event('fire-rocket-ui'));
   };
 
   return (
-    <div className="absolute inset-0 pointer-events-none z-50">
+    <div className="absolute inset-0 pointer-events-none z-50" style={{ color: spec.color }}>
+      {/* Cockpit corner frame */}
+      <div className="absolute top-3 left-3 w-8 h-8 border-t-2 border-l-2 opacity-60" style={{ borderColor: spec.color }} />
+      <div className="absolute top-3 right-3 w-8 h-8 border-t-2 border-r-2 opacity-60" style={{ borderColor: spec.color }} />
+      <div className="absolute bottom-3 left-3 w-8 h-8 border-b-2 border-l-2 opacity-60" style={{ borderColor: spec.color }} />
+      <div className="absolute bottom-3 right-3 w-8 h-8 border-b-2 border-r-2 opacity-60" style={{ borderColor: spec.color }} />
+
+      {/* Center targeting reticle */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 opacity-50">
+        <div className="absolute inset-0 rounded-full border" style={{ borderColor: spec.color }} />
+        <div className="absolute top-1/2 left-0 w-3 h-0.5" style={{ background: spec.color, transform: 'translateY(-50%)' }} />
+        <div className="absolute top-1/2 right-0 w-3 h-0.5" style={{ background: spec.color, transform: 'translateY(-50%)' }} />
+        <div className="absolute left-1/2 top-0 h-3 w-0.5" style={{ background: spec.color, transform: 'translateX(-50%)' }} />
+        <div className="absolute left-1/2 bottom-0 h-3 w-0.5" style={{ background: spec.color, transform: 'translateX(-50%)' }} />
+      </div>
+
       {/* Top bar */}
       <div className="flex justify-between items-start p-3">
         <div className="flex items-center gap-2">
@@ -674,36 +689,47 @@ const SpaceShooterHUD: React.FC = () => {
             <Pause className="text-white w-5 h-5"/>
           </button>
           <MuteBtn/>
-          <div className="text-2xl sm:text-3xl font-bold font-mono drop-shadow-[0_0_8px_currentColor]"
-            style={{ color: spec.color }}>{score.toLocaleString()}</div>
+          <div className="text-2xl sm:text-3xl font-bold font-mono drop-shadow-[0_0_8px_currentColor]">{score.toLocaleString()}</div>
           {comboMultiplier >= 2 && (
             <div className="px-2 py-0.5 bg-red-600 rounded font-black text-sm text-white animate-pulse">×{comboMultiplier}</div>
           )}
         </div>
-        {/* Lives */}
-        <div className="flex items-center gap-1">
-          {Array.from({ length: maxLives }).map((_, i) => (
-            <div key={i} className="w-3 h-4 rounded-sm border" style={{
-              background: i < lives ? spec.color : 'transparent',
-              borderColor: i < lives ? spec.color : '#444'
-            }}/>
-          ))}
+        {/* Hull integrity bar */}
+        <div className="flex flex-col items-end gap-1">
+          <div className="flex items-center gap-1.5">
+            <Shield className="w-3.5 h-3.5" />
+            <span className="text-[10px] font-mono tracking-wider opacity-80">HULL</span>
+          </div>
+          <div className="flex items-center gap-1">
+            {Array.from({ length: maxLives }).map((_, i) => (
+              <div key={i} className="w-4 h-2.5 rounded-sm border" style={{
+                background: i < lives ? spec.color : 'transparent',
+                borderColor: i < lives ? spec.color : '#444'
+              }}/>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Level badge + kill progress */}
-      <div className="absolute top-14 left-1/2 -translate-x-1/2 text-center">
-        <div className="bg-black/70 px-3 py-1 rounded-full border text-xs font-bold font-mono tracking-wider mb-1"
+      {/* Level badge + kill count + gem progress */}
+      <div className="absolute top-16 left-1/2 -translate-x-1/2 text-center flex flex-col items-center gap-1.5">
+        <div className="bg-black/70 px-3 py-1 rounded-full border text-xs font-bold font-mono tracking-wider"
           style={{ borderColor: spec.color, color: spec.color }}>
           SPACE ASSAULT · LEVEL {level}/10
         </div>
-        <div className="flex items-center gap-1 justify-center">
-          <Crosshair className="w-3 h-3 text-gray-400"/>
-          <div className="w-32 h-1.5 bg-gray-800 rounded-full overflow-hidden">
-            <div className="h-full rounded-full transition-all" style={{
-              width: `${Math.min(100, (spaceGemsCollected / ((d) * 30 + 30)) * 100)}%`,
-              background: `linear-gradient(90deg,${spec.color},#ff00ff)`
-            }}/>
+        <div className="flex items-center gap-3 bg-black/50 px-3 py-1 rounded-full border border-white/10">
+          <div className="flex items-center gap-1">
+            <Crosshair className="w-3 h-3 text-red-400" />
+            <span className="text-[11px] font-mono font-bold text-red-300">{spaceKills}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-24 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+              <div className="h-full rounded-full transition-all" style={{
+                width: `${Math.min(100, (spaceGemsCollected / gemsNeeded) * 100)}%`,
+                background: `linear-gradient(90deg,${spec.color},#ff00ff)`
+              }}/>
+            </div>
+            <span className="text-[10px] font-mono text-gray-400">{spaceGemsCollected}/{gemsNeeded}</span>
           </div>
         </div>
       </div>
