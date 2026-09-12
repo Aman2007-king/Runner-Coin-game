@@ -80,11 +80,11 @@ export const BIOME_BY_LEVEL: Record<number, BiomeType> = {
 // floor=ground colour (levels 1-5) or lane-marker colour (levels 6-10),
 // grid=secondary structure colour (bark/stone/rock, or asteroid/dust colour)
 export const BIOME_COLORS: Record<BiomeType, { bg: string; fog: string; ambient: string; dir: string; accent: string; floor: string; grid: string }> = {
-  [BiomeType.JUNGLE_RUINS]:  { bg: '#0d2a12', fog: '#123a18', ambient: '#2f6b3a', dir: '#bfe37a', accent: '#c9a24b', floor: '#3a5a2e', grid: '#6b4a2f' },
-  [BiomeType.DEEP_FOREST]:   { bg: '#111c1a', fog: '#1c2e29', ambient: '#3a6b5a', dir: '#9fd8c8', accent: '#e8f2c8', floor: '#2a3b2c', grid: '#4a3826' },
-  [BiomeType.DESERT_TEMPLE]: { bg: '#3a2a14', fog: '#5a4322', ambient: '#a5762f', dir: '#ffcf80', accent: '#ffdca0', floor: '#c9a15c', grid: '#8a6a3a' },
-  [BiomeType.CANYON_DUSK]:   { bg: '#2e1220', fog: '#4a1e2c', ambient: '#8a3a2a', dir: '#ff8a55', accent: '#ffb877', floor: '#7a3d2c', grid: '#5c2a20' },
-  [BiomeType.ICE_TEMPLE]:    { bg: '#0e1c2e', fog: '#16283e', ambient: '#3a6a8a', dir: '#cfefff', accent: '#eaffff', floor: '#c9e6f5', grid: '#5a7a90' },
+  [BiomeType.JUNGLE_RUINS]:  { bg: '#3a6b4a', fog: '#4a8058', ambient: '#2f6b3a', dir: '#fff0c0', accent: '#ffe28a', floor: '#8a5a35', grid: '#4a3320' },
+  [BiomeType.DEEP_FOREST]:   { bg: '#2c4a3e', fog: '#3a5c4c', ambient: '#1f3a2a', dir: '#cfe8d8', accent: '#eaffe0', floor: '#5a5040', grid: '#2e2015' },
+  [BiomeType.DESERT_TEMPLE]: { bg: '#8a6a34', fog: '#a5854a', ambient: '#a5762f', dir: '#ffe6a8', accent: '#ffdca0', floor: '#c9a15c', grid: '#8a6a3a' },
+  [BiomeType.CANYON_DUSK]:   { bg: '#6a2e3c', fog: '#7a3a44', ambient: '#5c2a20', dir: '#ff9a60', accent: '#ffc088', floor: '#8a4530', grid: '#4a2015' },
+  [BiomeType.ICE_TEMPLE]:    { bg: '#6a9ab8', fog: '#7fb0c8', ambient: '#3a6a8a', dir: '#eaffff', accent: '#ffffff', floor: '#c9e6f5', grid: '#5a7a90' },
   // ── Real-galaxy space biomes ────────────────────────────────────────────────
   [BiomeType.MILKY_CORE]:      { bg: '#03040c', fog: '#03040c', ambient: '#2a3060', dir: '#dfe6ff', accent: '#ffe9b0', floor: '#2255ff', grid: '#aab4ff' },
   [BiomeType.ORION_NEBULA]:    { bg: '#03080a', fog: '#03080a', ambient: '#0a4a55', dir: '#8fe8ff', accent: '#5df0c8', floor: '#1ec8ee', grid: '#3aa89a' },
