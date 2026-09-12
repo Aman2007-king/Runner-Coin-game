@@ -118,6 +118,8 @@ const MOVE_OBS_GEO  = new THREE.BoxGeometry(1.8, 1.4, 1.0);
 const SPACE_GEM_GEO      = new THREE.OctahedronGeometry(0.35, 0);
 const ENEMY_SMALL_GEO    = new THREE.ConeGeometry(0.45, 1.1, 5);
 const ENEMY_MEDIUM_GEO   = new THREE.ConeGeometry(0.75, 1.5, 6);
+const ENEMY_FIN_GEO      = new THREE.BoxGeometry(0.55, 0.06, 0.22);
+const ENEMY_POD_GEO      = new THREE.CylinderGeometry(0.16, 0.16, 0.75, 6);
 const ASTEROID_GEO       = new THREE.DodecahedronGeometry(0.9, 0);
 const ASTEROID_LG_GEO    = new THREE.DodecahedronGeometry(1.4, 0);
 const PLAYER_BULLET_GEO  = new THREE.CylinderGeometry(0.06, 0.06, 0.8, 5);
@@ -419,6 +421,7 @@ export const LevelManager: React.FC = () => {
               const pts = isRock ? 80 : (target.type === ObjectType.SPACE_ENEMY_MEDIUM ? 300 : 150);
               const earned = pts * useStore.getState().comboMultiplier;
               useStore.getState().addScore(earned);
+              if (isEnemy) useStore.getState().registerSpaceKill();
               addPopup(`+${earned}`, target.position[0], target.position[1]);
               window.dispatchEvent(new CustomEvent('particle-burst', { detail: { position: target.position, color: isRock ? '#cc8844' : '#ff2200' } }));
             }
@@ -711,6 +714,18 @@ const GameEntity: React.FC<{ data: GameObject; level: number; gamePhase: 1 | 3 }
             <mesh scale={[1.05, 1.05, 1.05]} geometry={ENEMY_SMALL_GEO}>
               <meshBasicMaterial color="#ff2200" wireframe transparent opacity={0.3} />
             </mesh>
+            {/* Cross-fins for a hostile drone silhouette */}
+            <mesh position={[0, -0.05, 0]} geometry={ENEMY_FIN_GEO}>
+              <meshStandardMaterial color="#3a0000" roughness={0.4} metalness={0.8} />
+            </mesh>
+            <mesh position={[0, -0.05, 0]} rotation={[0, Math.PI / 2, 0]} geometry={ENEMY_FIN_GEO}>
+              <meshStandardMaterial color="#3a0000" roughness={0.4} metalness={0.8} />
+            </mesh>
+            {/* Glowing sensor eye */}
+            <mesh position={[0, 0.35, 0]}>
+              <sphereGeometry args={[0.1, 6, 6]} />
+              <meshBasicMaterial color="#ff5500" />
+            </mesh>
           </group>
         )}
 
@@ -721,6 +736,18 @@ const GameEntity: React.FC<{ data: GameObject; level: number; gamePhase: 1 | 3 }
             </mesh>
             <mesh scale={[1.05, 1.05, 1.05]} geometry={ENEMY_MEDIUM_GEO}>
               <meshBasicMaterial color="#ff44aa" wireframe transparent opacity={0.35} />
+            </mesh>
+            {/* Side weapon pods */}
+            <mesh position={[-0.5, -0.1, 0.15]} rotation={[Math.PI / 2, 0, 0]} geometry={ENEMY_POD_GEO}>
+              <meshStandardMaterial color="#330022" roughness={0.4} metalness={0.8} />
+            </mesh>
+            <mesh position={[ 0.5, -0.1, 0.15]} rotation={[Math.PI / 2, 0, 0]} geometry={ENEMY_POD_GEO}>
+              <meshStandardMaterial color="#330022" roughness={0.4} metalness={0.8} />
+            </mesh>
+            {/* Glowing sensor band */}
+            <mesh position={[0, 0.35, 0]}>
+              <torusGeometry args={[0.35, 0.045, 6, 16]} />
+              <meshBasicMaterial color="#ff44aa" />
             </mesh>
             {/* HP bar above medium enemy */}
             {(data.hp ?? 1) < (data.maxHp ?? 1) && (
