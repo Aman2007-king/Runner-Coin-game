@@ -283,7 +283,6 @@ const SideScenery: React.FC<{ biome: BiomeType }> = ({ biome }) => {
   const offset = useRef(0);
   const cols   = BIOME_COLORS[biome];
   const kinds  = BIOME_PROPS[biome] ?? ['pine'];
-  if (IS_MOBILE) return null;
 
   const items = useMemo(() => {
     const out: { x: number; z: number; s: number; kind: PropKind }[] = [];
@@ -300,11 +299,13 @@ const SideScenery: React.FC<{ biome: BiomeType }> = ({ biome }) => {
   }, [biome]);
 
   useFrame((_, delta) => {
-    if (!ref.current) return;
+    if (IS_MOBILE || !ref.current) return;
     offset.current += Math.min(delta, 0.05) * speed;
     const cycle = 34 * 8;
     ref.current.position.z = offset.current % cycle;
   });
+
+  if (IS_MOBILE) return null;
 
   return (
     <group ref={ref}>
@@ -325,11 +326,11 @@ const CANOPY_KINDS: Partial<Record<BiomeType, boolean>> = {
 };
 
 const CanopyOverhead: React.FC<{ biome: BiomeType }> = ({ biome }) => {
-  const speed  = useStore(s => s.speed);
-  const ref    = useRef<THREE.Group>(null);
-  const offset = useRef(0);
-  const cols   = BIOME_COLORS[biome];
-  if (IS_MOBILE || !CANOPY_KINDS[biome]) return null;
+  const speed   = useStore(s => s.speed);
+  const ref     = useRef<THREE.Group>(null);
+  const offset  = useRef(0);
+  const cols    = BIOME_COLORS[biome];
+  const enabled = !IS_MOBILE && !!CANOPY_KINDS[biome];
 
   const clumps = useMemo(() => Array.from({ length: 16 }, (_, i) => ({
     x: (Math.random() - 0.5) * 22,
@@ -339,10 +340,12 @@ const CanopyOverhead: React.FC<{ biome: BiomeType }> = ({ biome }) => {
   })), [biome]);
 
   useFrame((_, delta) => {
-    if (!ref.current) return;
+    if (!enabled || !ref.current) return;
     offset.current += Math.min(delta, 0.05) * speed;
     ref.current.position.z = offset.current % (16 * 12);
   });
+
+  if (!enabled) return null;
 
   return (
     <group ref={ref}>
@@ -369,16 +372,18 @@ const PathArches: React.FC<{ biome: BiomeType }> = ({ biome }) => {
   const ref       = useRef<THREE.Group>(null);
   const offset    = useRef(0);
   const cols      = BIOME_COLORS[biome];
-  if (!ARCH_KINDS[biome]) return null;
+  const enabled   = !!ARCH_KINDS[biome];
 
   const span = laneCount * LANE_WIDTH + 2;
   const archZs = useMemo(() => Array.from({ length: 6 }, (_, i) => -30 - i * 45), []);
 
   useFrame((_, delta) => {
-    if (!ref.current) return;
+    if (!enabled || !ref.current) return;
     offset.current += Math.min(delta, 0.05) * speed;
     ref.current.position.z = offset.current % (45 * 6);
   });
+
+  if (!enabled) return null;
 
   return (
     <group ref={ref}>
