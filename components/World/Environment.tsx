@@ -119,10 +119,41 @@ const WideGround: React.FC<{ biome: BiomeType }> = ({ biome }) => {
   );
 };
 
-// ── Lane path floor + dividers ──────────────────────────────────────────────
+// ── Lane path floor (textured, scrolling) + dividers ────────────────────────
+function makePathTexture(floorColor: string, seamColor: string) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128; canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  ctx.fillStyle = floorColor;
+  ctx.fillRect(0, 0, 128, 256);
+  ctx.strokeStyle = seamColor;
+  ctx.globalAlpha = 0.4;
+  ctx.lineWidth = 3;
+  for (let y = 16; y < 256; y += 34) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(128, y); ctx.stroke();
+  }
+  ctx.globalAlpha = 0.15;
+  for (let i = 0; i < 50; i++) {
+    ctx.fillStyle = seamColor;
+    ctx.beginPath();
+    ctx.arc(Math.random() * 128, Math.random() * 256, 3 + Math.random() * 8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(1, 25);
+  return tex;
+}
+
 const LaneGuides: React.FC<{ biome: BiomeType }> = ({ biome }) => {
   const laneCount = useStore(s => s.laneCount);
+  const speed     = useStore(s => s.speed);
   const cols      = BIOME_COLORS[biome];
+  const matRef    = useRef<THREE.MeshStandardMaterial>(null);
+
+  const texture = useMemo(() => makePathTexture(cols.floor, cols.grid), [cols.floor, cols.grid]);
 
   const separators = useMemo(() => {
     const xs: number[] = [];
@@ -131,16 +162,23 @@ const LaneGuides: React.FC<{ biome: BiomeType }> = ({ biome }) => {
     return xs;
   }, [laneCount]);
 
+  useFrame((_, delta) => {
+    if (!texture) return;
+    texture.offset.y += Math.max(speed, 5) * Math.min(delta, 0.05) * 0.08;
+  });
+
   return (
     <group position={[0, 0.02, 0]}>
       <mesh position={[0, -0.02, -20]} rotation={[-Math.PI/2, 0, 0]}>
         <planeGeometry args={[laneCount * LANE_WIDTH, 200]} />
-        <meshStandardMaterial color={cols.floor} roughness={0.95} />
+        {texture
+          ? <meshStandardMaterial ref={matRef} map={texture} roughness={0.95} />
+          : <meshStandardMaterial color={cols.floor} roughness={0.95} />}
       </mesh>
       {separators.map((x, i) => (
         <mesh key={i} position={[x, 0, -20]} rotation={[-Math.PI/2, 0, 0]}>
-          <planeGeometry args={[0.05, 200]} />
-          <meshBasicMaterial color={cols.dir} transparent opacity={0.35} />
+          <planeGeometry args={[0.06, 200]} />
+          <meshBasicMaterial color={cols.grid} transparent opacity={0.5} />
         </mesh>
       ))}
     </group>
@@ -249,12 +287,12 @@ const SideScenery: React.FC<{ biome: BiomeType }> = ({ biome }) => {
 
   const items = useMemo(() => {
     const out: { x: number; z: number; s: number; kind: PropKind }[] = [];
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 34; i++) {
       const side = i % 2 === 0 ? -1 : 1;
       out.push({
-        x: side * (10 + Math.random() * 10),
-        z: -i * 15,
-        s: 0.8 + Math.random() * 0.7,
+        x: side * (5.5 + Math.random() * 4),
+        z: -i * 8,
+        s: 1.3 + Math.random() * 1.2,
         kind: kinds[Math.floor(Math.random() * kinds.length)],
       });
     }
@@ -264,7 +302,7 @@ const SideScenery: React.FC<{ biome: BiomeType }> = ({ biome }) => {
   useFrame((_, delta) => {
     if (!ref.current) return;
     offset.current += Math.min(delta, 0.05) * speed;
-    const cycle = 20 * 15;
+    const cycle = 34 * 8;
     ref.current.position.z = offset.current % cycle;
   });
 
@@ -273,6 +311,95 @@ const SideScenery: React.FC<{ biome: BiomeType }> = ({ biome }) => {
       {items.map((it, i) => (
         <group key={i} position={[it.x, 0, it.z]} scale={it.s}>
           <Prop kind={it.kind} cols={cols} />
+        </group>
+      ))}
+    </group>
+  );
+};
+
+// ── Overhead canopy — closes the top of the frame so it reads as a jungle
+//    tunnel instead of open sky with a few floating trees ──────────────────
+const CANOPY_KINDS: Partial<Record<BiomeType, boolean>> = {
+  [BiomeType.JUNGLE_RUINS]: true,
+  [BiomeType.DEEP_FOREST]:  true,
+};
+
+const CanopyOverhead: React.FC<{ biome: BiomeType }> = ({ biome }) => {
+  const speed  = useStore(s => s.speed);
+  const ref    = useRef<THREE.Group>(null);
+  const offset = useRef(0);
+  const cols   = BIOME_COLORS[biome];
+  if (IS_MOBILE || !CANOPY_KINDS[biome]) return null;
+
+  const clumps = useMemo(() => Array.from({ length: 16 }, (_, i) => ({
+    x: (Math.random() - 0.5) * 22,
+    y: 7 + Math.random() * 2.5,
+    z: -i * 12,
+    r: 4 + Math.random() * 2.5,
+  })), [biome]);
+
+  useFrame((_, delta) => {
+    if (!ref.current) return;
+    offset.current += Math.min(delta, 0.05) * speed;
+    ref.current.position.z = offset.current % (16 * 12);
+  });
+
+  return (
+    <group ref={ref}>
+      {clumps.map((c, i) => (
+        <mesh key={i} position={[c.x, c.y, c.z]} scale={[1, 0.5, 1]}>
+          <sphereGeometry args={[c.r, 8, 6]} />
+          <meshStandardMaterial color={cols.accent} roughness={0.9} transparent opacity={0.9} />
+        </mesh>
+      ))}
+    </group>
+  );
+};
+
+// ── Stone arches spanning the path — Temple-Run-style ruined gates ─────────
+const ARCH_KINDS: Partial<Record<BiomeType, boolean>> = {
+  [BiomeType.JUNGLE_RUINS]:  true,
+  [BiomeType.DESERT_TEMPLE]: true,
+  [BiomeType.ICE_TEMPLE]:    true,
+};
+
+const PathArches: React.FC<{ biome: BiomeType }> = ({ biome }) => {
+  const laneCount = useStore(s => s.laneCount);
+  const speed     = useStore(s => s.speed);
+  const ref       = useRef<THREE.Group>(null);
+  const offset    = useRef(0);
+  const cols      = BIOME_COLORS[biome];
+  if (!ARCH_KINDS[biome]) return null;
+
+  const span = laneCount * LANE_WIDTH + 2;
+  const archZs = useMemo(() => Array.from({ length: 6 }, (_, i) => -30 - i * 45), []);
+
+  useFrame((_, delta) => {
+    if (!ref.current) return;
+    offset.current += Math.min(delta, 0.05) * speed;
+    ref.current.position.z = offset.current % (45 * 6);
+  });
+
+  return (
+    <group ref={ref}>
+      {archZs.map((z, i) => (
+        <group key={i} position={[0, 0, z]}>
+          <mesh position={[-span / 2, 3, 0]}>
+            <boxGeometry args={[0.9, 6, 0.9]} />
+            <meshStandardMaterial color={cols.grid} roughness={0.95} />
+          </mesh>
+          <mesh position={[ span / 2, 3, 0]}>
+            <boxGeometry args={[0.9, 6, 0.9]} />
+            <meshStandardMaterial color={cols.grid} roughness={0.95} />
+          </mesh>
+          <mesh position={[0, 6.2, 0]}>
+            <boxGeometry args={[span + 1.2, 1, 1]} />
+            <meshStandardMaterial color={cols.grid} roughness={0.95} />
+          </mesh>
+          <mesh position={[0, 6.2, 0]} scale={[0.94, 0.5, 1.02]}>
+            <boxGeometry args={[span + 1.2, 1, 1]} />
+            <meshStandardMaterial color={cols.accent} roughness={0.9} />
+          </mesh>
         </group>
       ))}
     </group>
@@ -488,16 +615,18 @@ export const Environment: React.FC = () => {
   return (
     <>
       <color attach="background" args={[cols.bg as any]} />
-      <fog attach="fog" args={[cols.fog, IS_MOBILE ? 60 : 40, IS_MOBILE ? 120 : 160]} />
-      <ambientLight intensity={0.55} color={cols.ambient} />
-      <directionalLight position={[0, 20, -10]} intensity={1.3} color={cols.dir} />
+      <fog attach="fog" args={[cols.fog, IS_MOBILE ? 50 : 35, IS_MOBILE ? 140 : 200]} />
+      <ambientLight intensity={0.9} color={cols.ambient} />
+      <directionalLight position={[10, 25, -10]} intensity={2.2} color={cols.dir} />
       {!IS_MOBILE && (
-        <pointLight position={[0, 25, -150]} intensity={1.2} color={cols.accent} distance={200} decay={2} />
+        <pointLight position={[0, 20, -60]} intensity={1.5} color={cols.accent} distance={220} decay={2} />
       )}
       <WideGround biome={biome} />
       <LaneGuides biome={biome} />
       <SkyOrb biome={biome} />
       <SideScenery biome={biome} />
+      <CanopyOverhead biome={biome} />
+      <PathArches biome={biome} />
       <AmbientParticles biome={biome} />
     </>
   );
