@@ -48,45 +48,49 @@ export enum SkinType {
 }
 
 export enum BiomeType {
-  NEON_CITY = 'NEON_CITY',
-  LAVA_CORE = 'LAVA_CORE',
-  ICE_VOID  = 'ICE_VOID',
-  STORM     = 'STORM',
-  VOID      = 'VOID',
-  // ── NEW: space biomes for Levels 6-10 ──────────────────────────────────────
-  NEBULA        = 'NEBULA',
-  ASTEROID_BELT = 'ASTEROID_BELT',
-  DARK_MATTER   = 'DARK_MATTER',
-  PULSAR        = 'PULSAR',
-  SINGULARITY   = 'SINGULARITY',
+  // ── Levels 1-5: Temple-Run-style ground biomes ─────────────────────────────
+  JUNGLE_RUINS  = 'JUNGLE_RUINS',   // overgrown stone temple, vines, dense green canopy
+  DEEP_FOREST   = 'DEEP_FOREST',    // tall pine woods, misty and cool
+  DESERT_TEMPLE = 'DESERT_TEMPLE',  // sandstone ruins, dunes, warm dusty light
+  CANYON_DUSK   = 'CANYON_DUSK',    // red-rock canyon at sunset
+  ICE_TEMPLE    = 'ICE_TEMPLE',     // frozen ruins, snow, pale blue light
+  // ── Levels 6-10: real-galaxy space biomes ──────────────────────────────────
+  MILKY_CORE      = 'MILKY_CORE',      // dense starfield near the galactic disc
+  ORION_NEBULA    = 'ORION_NEBULA',    // glowing blue/teal star-forming clouds
+  ANDROMEDA_DRIFT = 'ANDROMEDA_DRIFT', // distant spiral galaxy, violet dust lanes
+  DEEP_VOID       = 'DEEP_VOID',       // sparse deep space, cold and quiet
+  GALACTIC_HEART  = 'GALACTIC_HEART',  // blazing supermassive core, warm gold/red
 }
 
 export const BIOME_BY_LEVEL: Record<number, BiomeType> = {
-  1: BiomeType.NEON_CITY,
-  2: BiomeType.LAVA_CORE,
-  3: BiomeType.ICE_VOID,
-  4: BiomeType.STORM,
-  5: BiomeType.VOID,
-  // ── NEW ────────────────────────────────────────────────────────────────────
-  6:  BiomeType.NEBULA,
-  7:  BiomeType.ASTEROID_BELT,
-  8:  BiomeType.DARK_MATTER,
-  9:  BiomeType.PULSAR,
-  10: BiomeType.SINGULARITY,
+  1: BiomeType.JUNGLE_RUINS,
+  2: BiomeType.DEEP_FOREST,
+  3: BiomeType.DESERT_TEMPLE,
+  4: BiomeType.CANYON_DUSK,
+  5: BiomeType.ICE_TEMPLE,
+  6:  BiomeType.MILKY_CORE,
+  7:  BiomeType.ORION_NEBULA,
+  8:  BiomeType.ANDROMEDA_DRIFT,
+  9:  BiomeType.DEEP_VOID,
+  10: BiomeType.GALACTIC_HEART,
 };
 
+// bg=sky/void colour, fog=matches bg for horizon blending, ambient/dir=lighting,
+// accent=key highlight colour (canopy glow / ice glint / nebula glow),
+// floor=ground colour (levels 1-5) or lane-marker colour (levels 6-10),
+// grid=secondary structure colour (bark/stone/rock, or asteroid/dust colour)
 export const BIOME_COLORS: Record<BiomeType, { bg: string; fog: string; ambient: string; dir: string; accent: string; floor: string; grid: string }> = {
-  [BiomeType.NEON_CITY]:     { bg: '#050011', fog: '#050011', ambient: '#400080', dir: '#00ffff', accent: '#ff00aa', floor: '#1a0b2e', grid: '#8800ff' },
-  [BiomeType.LAVA_CORE]:     { bg: '#1a0000', fog: '#1a0000', ambient: '#800020', dir: '#ff4400', accent: '#ff8800', floor: '#2e0a00', grid: '#ff2200' },
-  [BiomeType.ICE_VOID]:      { bg: '#001120', fog: '#001120', ambient: '#004080', dir: '#88ddff', accent: '#00ffee', floor: '#001e33', grid: '#00aaff' },
-  [BiomeType.STORM]:         { bg: '#0a0a1a', fog: '#0a0a1a', ambient: '#303060', dir: '#aaaaff', accent: '#ffffff', floor: '#111128', grid: '#4444ff' },
-  [BiomeType.VOID]:          { bg: '#000000', fog: '#000000', ambient: '#200020', dir: '#ff00ff', accent: '#cc00ff', floor: '#0d000d', grid: '#ff00ff' },
-  // ── NEW space biomes ────────────────────────────────────────────────────────
-  [BiomeType.NEBULA]:        { bg: '#000518', fog: '#000518', ambient: '#001060', dir: '#2255ff', accent: '#55aaff', floor: '#000c28', grid: '#1133aa' },
-  [BiomeType.ASTEROID_BELT]: { bg: '#100a00', fog: '#100a00', ambient: '#402000', dir: '#cc6600', accent: '#ffaa33', floor: '#1e1000', grid: '#884400' },
-  [BiomeType.DARK_MATTER]:   { bg: '#080010', fog: '#080010', ambient: '#300050', dir: '#9900ff', accent: '#cc44ff', floor: '#0e001e', grid: '#6600cc' },
-  [BiomeType.PULSAR]:        { bg: '#001818', fog: '#001818', ambient: '#005050', dir: '#00ffcc', accent: '#00ffff', floor: '#001e1e', grid: '#00aaaa' },
-  [BiomeType.SINGULARITY]:   { bg: '#000000', fog: '#000000', ambient: '#220000', dir: '#ff2200', accent: '#ff5500', floor: '#0a0000', grid: '#cc1100' },
+  [BiomeType.JUNGLE_RUINS]:  { bg: '#0d2a12', fog: '#123a18', ambient: '#2f6b3a', dir: '#bfe37a', accent: '#c9a24b', floor: '#3a5a2e', grid: '#6b4a2f' },
+  [BiomeType.DEEP_FOREST]:   { bg: '#111c1a', fog: '#1c2e29', ambient: '#3a6b5a', dir: '#9fd8c8', accent: '#e8f2c8', floor: '#2a3b2c', grid: '#4a3826' },
+  [BiomeType.DESERT_TEMPLE]: { bg: '#3a2a14', fog: '#5a4322', ambient: '#a5762f', dir: '#ffcf80', accent: '#ffdca0', floor: '#c9a15c', grid: '#8a6a3a' },
+  [BiomeType.CANYON_DUSK]:   { bg: '#2e1220', fog: '#4a1e2c', ambient: '#8a3a2a', dir: '#ff8a55', accent: '#ffb877', floor: '#7a3d2c', grid: '#5c2a20' },
+  [BiomeType.ICE_TEMPLE]:    { bg: '#0e1c2e', fog: '#16283e', ambient: '#3a6a8a', dir: '#cfefff', accent: '#eaffff', floor: '#c9e6f5', grid: '#5a7a90' },
+  // ── Real-galaxy space biomes ────────────────────────────────────────────────
+  [BiomeType.MILKY_CORE]:      { bg: '#03040c', fog: '#03040c', ambient: '#2a3060', dir: '#dfe6ff', accent: '#ffe9b0', floor: '#2255ff', grid: '#aab4ff' },
+  [BiomeType.ORION_NEBULA]:    { bg: '#03080a', fog: '#03080a', ambient: '#0a4a55', dir: '#8fe8ff', accent: '#5df0c8', floor: '#1ec8ee', grid: '#3aa89a' },
+  [BiomeType.ANDROMEDA_DRIFT]: { bg: '#08040e', fog: '#08040e', ambient: '#3a1a5a', dir: '#c79bff', accent: '#ff9be0', floor: '#7c4aff', grid: '#5a3a8a' },
+  [BiomeType.DEEP_VOID]:       { bg: '#000004', fog: '#000004', ambient: '#101830', dir: '#8fa8ff', accent: '#cfe0ff', floor: '#3355aa', grid: '#445a88' },
+  [BiomeType.GALACTIC_HEART]:  { bg: '#140502', fog: '#140502', ambient: '#7a2a0a', dir: '#ffb84a', accent: '#ffe07a', floor: '#ff6a1a', grid: '#aa4a1a' },
 };
 
 export interface DailyMission {
