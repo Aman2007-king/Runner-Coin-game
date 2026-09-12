@@ -120,26 +120,77 @@ const WideGround: React.FC<{ biome: BiomeType }> = ({ biome }) => {
 };
 
 // ── Lane path floor (textured, scrolling) + dividers ────────────────────────
-function makePathTexture(floorColor: string, seamColor: string) {
+function shadeColor(hex: string, factor: number) {
+  const c = new THREE.Color(hex);
+  c.multiplyScalar(factor);
+  return `#${c.getHexString()}`;
+}
+
+const MOSS_BIOMES: Partial<Record<BiomeType, boolean>> = {
+  [BiomeType.JUNGLE_RUINS]: true,
+  [BiomeType.DEEP_FOREST]:  true,
+};
+
+function makePathTexture(floorColor: string, seamColor: string, mossy: boolean) {
+  const w = 128, h = 256;
   const canvas = document.createElement('canvas');
-  canvas.width = 128; canvas.height = 256;
+  canvas.width = w; canvas.height = h;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
   ctx.fillStyle = floorColor;
-  ctx.fillRect(0, 0, 128, 256);
+  ctx.fillRect(0, 0, w, h);
+
+  // Staggered stone/brick blocks with per-block shading for texture variation
+  const rows = 10, cols = 4;
+  const rowH = h / rows, colW = w / cols;
+  for (let r = 0; r < rows; r++) {
+    const stagger = (r % 2) * (colW / 2);
+    for (let c = -1; c <= cols; c++) {
+      const x = c * colW + stagger, y = r * rowH;
+      ctx.fillStyle = shadeColor(floorColor, 0.85 + Math.random() * 0.3);
+      ctx.fillRect(x + 2, y + 2, colW - 4, rowH - 4);
+    }
+  }
+
+  // Grout lines
   ctx.strokeStyle = seamColor;
-  ctx.globalAlpha = 0.4;
-  ctx.lineWidth = 3;
-  for (let y = 16; y < 256; y += 34) {
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(128, y); ctx.stroke();
+  ctx.globalAlpha = 0.5;
+  ctx.lineWidth = 2;
+  for (let r = 0; r <= rows; r++) {
+    const y = r * rowH;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
   }
-  ctx.globalAlpha = 0.15;
-  for (let i = 0; i < 50; i++) {
-    ctx.fillStyle = seamColor;
-    ctx.beginPath();
-    ctx.arc(Math.random() * 128, Math.random() * 256, 3 + Math.random() * 8, 0, Math.PI * 2);
-    ctx.fill();
+  for (let r = 0; r < rows; r++) {
+    const stagger = (r % 2) * (colW / 2);
+    for (let c = 0; c <= cols; c++) {
+      const x = c * colW + stagger;
+      ctx.beginPath(); ctx.moveTo(x, r * rowH); ctx.lineTo(x, (r + 1) * rowH); ctx.stroke();
+    }
   }
+
+  // Cracks
+  ctx.globalAlpha = 0.3;
+  for (let i = 0; i < 8; i++) {
+    let x = Math.random() * w, y = Math.random() * h;
+    ctx.beginPath(); ctx.moveTo(x, y);
+    for (let j = 0; j < 4; j++) { x += (Math.random() - 0.5) * 22; y += Math.random() * 16; ctx.lineTo(x, y); }
+    ctx.stroke();
+  }
+
+  // Moss creeping in from the edges (jungle/forest only)
+  if (mossy) {
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = '#3a6b30';
+    for (let i = 0; i < 34; i++) {
+      const edge = Math.random() < 0.5 ? Math.random() * 16 : w - Math.random() * 16;
+      const y = Math.random() * h;
+      ctx.beginPath();
+      ctx.arc(edge, y, 4 + Math.random() * 9, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  ctx.globalAlpha = 1;
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
@@ -153,7 +204,7 @@ const LaneGuides: React.FC<{ biome: BiomeType }> = ({ biome }) => {
   const cols      = BIOME_COLORS[biome];
   const matRef    = useRef<THREE.MeshStandardMaterial>(null);
 
-  const texture = useMemo(() => makePathTexture(cols.floor, cols.grid), [cols.floor, cols.grid]);
+  const texture = useMemo(() => makePathTexture(cols.floor, cols.grid, !!MOSS_BIOMES[biome]), [cols.floor, cols.grid, biome]);
 
   const separators = useMemo(() => {
     const xs: number[] = [];
@@ -366,6 +417,55 @@ const ARCH_KINDS: Partial<Record<BiomeType, boolean>> = {
   [BiomeType.ICE_TEMPLE]:    true,
 };
 
+function makeCarvedFaceTexture(stoneColor: string, darkColor: string) {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  ctx.fillStyle = stoneColor;
+  ctx.fillRect(0, 0, size, size);
+  ctx.fillStyle = darkColor;
+  ctx.beginPath(); ctx.arc(40, 45, 14, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(88, 45, 14, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = stoneColor;
+  ctx.beginPath(); ctx.arc(40, 45, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(88, 45, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = darkColor;
+  ctx.fillRect(30, 85, 68, 20);
+  ctx.fillStyle = stoneColor;
+  for (let i = 0; i < 6; i++) ctx.fillRect(32 + i * 11, 85, 6, 20);
+  return new THREE.CanvasTexture(canvas);
+}
+
+const VINE_BIOMES: Partial<Record<BiomeType, boolean>> = {
+  [BiomeType.JUNGLE_RUINS]: true,
+};
+
+const HangingVines: React.FC<{ span: number; cols: { accent: string } }> = ({ span, cols }) => {
+  const vines = useMemo(() => Array.from({ length: 5 }, (_, i) => ({
+    x: -span / 2 + 0.6 + (i / 4) * (span - 1.2) + (Math.random() - 0.5) * 0.6,
+    len: 1.2 + Math.random() * 1.6,
+    sway: (Math.random() - 0.5) * 0.5,
+  })), [span]);
+  return (
+    <>
+      {vines.map((v, i) => (
+        <group key={i} position={[v.x, 6.1, 0]} rotation={[0, 0, v.sway]}>
+          <mesh position={[0, -v.len / 2, 0]}>
+            <cylinderGeometry args={[0.03, 0.04, v.len, 5]} />
+            <meshStandardMaterial color="#2f5a2a" roughness={0.9} />
+          </mesh>
+          <mesh position={[0, -v.len - 0.12, 0]} scale={[1, 0.6, 1]}>
+            <sphereGeometry args={[0.18, 6, 6]} />
+            <meshStandardMaterial color={cols.accent} roughness={0.9} />
+          </mesh>
+        </group>
+      ))}
+    </>
+  );
+};
+
 const PathArches: React.FC<{ biome: BiomeType }> = ({ biome }) => {
   const laneCount = useStore(s => s.laneCount);
   const speed     = useStore(s => s.speed);
@@ -376,6 +476,7 @@ const PathArches: React.FC<{ biome: BiomeType }> = ({ biome }) => {
 
   const span = laneCount * LANE_WIDTH + 2;
   const archZs = useMemo(() => Array.from({ length: 6 }, (_, i) => -30 - i * 45), []);
+  const faceTexture = useMemo(() => makeCarvedFaceTexture(cols.grid, '#1a1208'), [cols.grid]);
 
   useFrame((_, delta) => {
     if (!enabled || !ref.current) return;
@@ -393,10 +494,22 @@ const PathArches: React.FC<{ biome: BiomeType }> = ({ biome }) => {
             <boxGeometry args={[0.9, 6, 0.9]} />
             <meshStandardMaterial color={cols.grid} roughness={0.95} />
           </mesh>
+          {faceTexture && (
+            <mesh position={[-span / 2, 3.3, 0.46]}>
+              <planeGeometry args={[0.7, 0.7]} />
+              <meshBasicMaterial map={faceTexture} />
+            </mesh>
+          )}
           <mesh position={[ span / 2, 3, 0]}>
             <boxGeometry args={[0.9, 6, 0.9]} />
             <meshStandardMaterial color={cols.grid} roughness={0.95} />
           </mesh>
+          {faceTexture && (
+            <mesh position={[ span / 2, 3.3, 0.46]}>
+              <planeGeometry args={[0.7, 0.7]} />
+              <meshBasicMaterial map={faceTexture} />
+            </mesh>
+          )}
           <mesh position={[0, 6.2, 0]}>
             <boxGeometry args={[span + 1.2, 1, 1]} />
             <meshStandardMaterial color={cols.grid} roughness={0.95} />
@@ -405,6 +518,7 @@ const PathArches: React.FC<{ biome: BiomeType }> = ({ biome }) => {
             <boxGeometry args={[span + 1.2, 1, 1]} />
             <meshStandardMaterial color={cols.accent} roughness={0.9} />
           </mesh>
+          {VINE_BIOMES[biome] && <HangingVines span={span} cols={cols} />}
         </group>
       ))}
     </group>
