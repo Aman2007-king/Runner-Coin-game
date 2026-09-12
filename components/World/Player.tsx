@@ -25,8 +25,11 @@ const SHADOW_GEO = new THREE.CircleGeometry(0.5, IS_MOBILE ? 16 : 32);
 const SHIELD_GEO = new THREE.SphereGeometry(1, IS_MOBILE ? 12 : 20, IS_MOBILE ? 12 : 20);
 
 // ── NEW: Spacecraft geometries ─────────────────────────────────────────────────
-const SHIP_BODY_GEO   = new THREE.ConeGeometry(0.5, 1.8, IS_MOBILE ? 5 : 8);
-const SHIP_WING_GEO   = new THREE.BoxGeometry(1.6, 0.12, 0.7);
+const SHIP_NOSE_GEO   = new THREE.ConeGeometry(0.28, 0.9, IS_MOBILE ? 6 : 8);
+const SHIP_HULL_GEO   = new THREE.CylinderGeometry(0.28, 0.4, 1.1, IS_MOBILE ? 6 : 8);
+const SHIP_CANOPY_GEO = new THREE.SphereGeometry(0.22, IS_MOBILE ? 8 : 12, IS_MOBILE ? 6 : 8, 0, Math.PI * 2, 0, Math.PI / 2);
+const SHIP_WING_GEO   = new THREE.BoxGeometry(1.1, 0.08, 0.55);
+const SHIP_FIN_GEO    = new THREE.BoxGeometry(0.06, 0.4, 0.35);
 const SHIP_ENGINE_GEO = new THREE.CylinderGeometry(0.18, 0.1, 0.5, 6);
 const SHIP_GLOW_GEO   = new THREE.SphereGeometry(0.22, IS_MOBILE ? 6 : 10, IS_MOBILE ? 6 : 10);
 const ROCKET_TRAIL_GEO = new THREE.ConeGeometry(0.18, 0.9, 6);
@@ -57,6 +60,7 @@ function buildShipMaterials(model: AircraftModel) {
   return {
     body:   new THREE.MeshStandardMaterial({ color: '#0a0a1a', roughness: 0.3, metalness: 0.9 }),
     accent: new THREE.MeshStandardMaterial({ color: col, roughness: 0.1, metalness: 1.0, emissive: col, emissiveIntensity: 0.6 }),
+    canopy: new THREE.MeshStandardMaterial({ color: '#66d9ff', roughness: 0.05, metalness: 0.2, transparent: true, opacity: 0.8, emissive: '#66d9ff', emissiveIntensity: 0.3 }),
     engine: new THREE.MeshStandardMaterial({ color: '#222244', roughness: 0.5, metalness: 0.7 }),
     glow:   new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.85 }),
     trail:  new THREE.MeshBasicMaterial({ color: '#ff8800', transparent: true, opacity: 0.5 }),
@@ -347,13 +351,22 @@ export const Player: React.FC = () => {
     return (
       <group ref={groupRef}>
         <group ref={bodyRef}>
-          {/* Main hull */}
-          <mesh rotation={[Math.PI, 0, 0]} geometry={SHIP_BODY_GEO} material={shipMats.body} />
-          {/* Accent stripe */}
-          <mesh rotation={[Math.PI, 0, 0]} scale={[0.62, 1.02, 0.62]} geometry={SHIP_BODY_GEO} material={shipMats.accent} />
-          {/* Wings */}
-          <mesh position={[0, -0.1, 0.1]} geometry={SHIP_WING_GEO} material={shipMats.body} />
-          <mesh position={[0, -0.1, 0.1]} scale={[1.01, 2.5, 1.01]} geometry={SHIP_WING_GEO} material={shipMats.accent} />
+          {/* Nose cone */}
+          <mesh position={[0, 0.95, 0]} geometry={SHIP_NOSE_GEO} material={shipMats.body} />
+          {/* Fuselage hull */}
+          <mesh position={[0, 0.05, 0]} rotation={[Math.PI, 0, 0]} geometry={SHIP_HULL_GEO} material={shipMats.body} />
+          {/* Hull accent stripe */}
+          <mesh position={[0, 0.05, 0]} rotation={[Math.PI, 0, 0]} scale={[0.55, 1.0, 0.55]} geometry={SHIP_HULL_GEO} material={shipMats.accent} />
+          {/* Cockpit canopy */}
+          <mesh position={[0, 0.55, 0.08]} rotation={[-0.3, 0, 0]} geometry={SHIP_CANOPY_GEO} material={shipMats.canopy} />
+          {/* Swept wings (angled, fighter-jet silhouette) */}
+          <mesh position={[-0.55, -0.15, 0.15]} rotation={[0, 0, 0.28]} geometry={SHIP_WING_GEO} material={shipMats.body} />
+          <mesh position={[ 0.55, -0.15, 0.15]} rotation={[0, 0, -0.28]} geometry={SHIP_WING_GEO} material={shipMats.body} />
+          <mesh position={[-0.55, -0.15, 0.15]} rotation={[0, 0, 0.28]} scale={[1.0, 2.2, 1.0]} geometry={SHIP_WING_GEO} material={shipMats.accent} />
+          <mesh position={[ 0.55, -0.15, 0.15]} rotation={[0, 0, -0.28]} scale={[1.0, 2.2, 1.0]} geometry={SHIP_WING_GEO} material={shipMats.accent} />
+          {/* Tail stabilizer fins */}
+          <mesh position={[-0.22, -0.35, 0.35]} geometry={SHIP_FIN_GEO} material={shipMats.body} />
+          <mesh position={[ 0.22, -0.35, 0.35]} geometry={SHIP_FIN_GEO} material={shipMats.body} />
           {/* Engines */}
           <mesh position={[-0.55, -0.3, 0.1]} geometry={SHIP_ENGINE_GEO} material={shipMats.engine} />
           <mesh position={[ 0.55, -0.3, 0.1]} geometry={SHIP_ENGINE_GEO} material={shipMats.engine} />
