@@ -35,13 +35,20 @@ const SHIP_GLOW_GEO   = new THREE.SphereGeometry(0.22, IS_MOBILE ? 6 : 10, IS_MO
 const ROCKET_TRAIL_GEO = new THREE.ConeGeometry(0.18, 0.9, 6);
 
 function buildMaterials(skin: SkinType, immortal: boolean) {
-  let armor = '#00aaff', glow = '#00ffff';
-  if (immortal)                         { armor = '#ffd700'; glow = '#ffffff'; }
-  else if (skin === SkinType.NEON_BLUE) { armor = '#0066ff'; glow = '#00ffff'; }
-  else if (skin === SkinType.NEON_GOLD) { armor = '#ffaa00'; glow = '#ffff00'; }
-  else if (skin === SkinType.PHANTOM)   { armor = '#333333'; glow = '#ff00ff'; }
+  // Default skin = an actual adventurer (skin tone / shirt / pants), not a neon robot.
+  // Purchased neon skins keep their uniform glowing-suit look.
+  let skinTone = '#e0a878', shirt = '#3a6ea5', pants = '#4a3826', glow = '#ffcf9e';
+  let uniform  = false;
+  if (immortal)                         { skinTone = shirt = pants = '#ffd700'; glow = '#ffffff'; uniform = true; }
+  else if (skin === SkinType.NEON_BLUE) { skinTone = shirt = pants = '#0066ff'; glow = '#00ffff'; uniform = true; }
+  else if (skin === SkinType.NEON_GOLD) { skinTone = shirt = pants = '#ffaa00'; glow = '#ffff00'; uniform = true; }
+  else if (skin === SkinType.PHANTOM)   { skinTone = shirt = pants = '#333333'; glow = '#ff00ff'; uniform = true; }
+  const rough = uniform ? 0.3 : 0.7, metal = uniform ? 0.8 : 0.1;
   return {
-    arm:    new THREE.MeshStandardMaterial({ color: armor, roughness: 0.3, metalness: 0.8 }),
+    skin:   new THREE.MeshStandardMaterial({ color: skinTone, roughness: rough, metalness: metal }),
+    shirt:  new THREE.MeshStandardMaterial({ color: shirt,    roughness: rough, metalness: metal }),
+    pants:  new THREE.MeshStandardMaterial({ color: pants,    roughness: rough, metalness: metal }),
+    arm:    new THREE.MeshStandardMaterial({ color: shirt,    roughness: rough, metalness: metal }), // legacy alias
     joint:  new THREE.MeshStandardMaterial({ color: '#111111', roughness: 0.7, metalness: 0.5 }),
     glow:   new THREE.MeshBasicMaterial({ color: glow }),
     shadow: new THREE.MeshBasicMaterial({ color: '#000000', opacity: 0.3, transparent: true }),
@@ -405,33 +412,38 @@ export const Player: React.FC = () => {
     );
   }
 
-  // ── Phase 1: original human runner (unchanged) ─────────────────────────────
+  // ── Phase 1: human runner ───────────────────────────────────────────────────
   return (
     <group ref={groupRef}>
       <group ref={bodyRef} position={[0, 1.1, 0]}>
         {/* Torso */}
-        <mesh castShadow position={[0, 0.2, 0]} geometry={TORSO_GEO} material={mats.arm} />
+        <mesh castShadow position={[0, 0.2, 0]} geometry={TORSO_GEO} material={mats.shirt} />
+        {/* Backpack */}
+        <mesh position={[0, 0.22, -0.16]}>
+          <boxGeometry args={[0.22, 0.32, 0.14]} />
+          <meshStandardMaterial color={mats.pants.color} roughness={0.8} />
+        </mesh>
         {/* Head */}
-        <mesh position={[0, 0.6, 0]} castShadow geometry={HEAD_GEO} material={mats.arm} />
+        <mesh position={[0, 0.6, 0]} castShadow geometry={HEAD_GEO} material={mats.skin} />
         {/* Right arm */}
         <group position={[0.32, 0.4, 0]}><group ref={rArmRef}>
-          <mesh position={[0, -0.25, 0]} geometry={ARM_GEO} material={mats.arm} />
+          <mesh position={[0, -0.25, 0]} geometry={ARM_GEO} material={mats.skin} />
           <mesh position={[0, -0.55, 0]} geometry={JOINT_GEO} material={mats.glow} />
         </group></group>
         {/* Left arm */}
         <group position={[-0.32, 0.4, 0]}><group ref={lArmRef}>
-          <mesh position={[0, -0.25, 0]} geometry={ARM_GEO} material={mats.arm} />
+          <mesh position={[0, -0.25, 0]} geometry={ARM_GEO} material={mats.skin} />
           <mesh position={[0, -0.55, 0]} geometry={JOINT_GEO} material={mats.glow} />
         </group></group>
         {/* Hips */}
-        <mesh position={[0, -0.15, 0]} geometry={HIPS_GEO} material={mats.joint} />
+        <mesh position={[0, -0.15, 0]} geometry={HIPS_GEO} material={mats.pants} />
         {/* Right leg */}
         <group position={[0.12, -0.25, 0]}><group ref={rLegRef}>
-          <mesh position={[0, -0.35, 0]} geometry={LEG_GEO} material={mats.arm} />
+          <mesh position={[0, -0.35, 0]} geometry={LEG_GEO} material={mats.pants} />
         </group></group>
         {/* Left leg */}
         <group position={[-0.12, -0.25, 0]}><group ref={lLegRef}>
-          <mesh position={[0, -0.35, 0]} geometry={LEG_GEO} material={mats.arm} />
+          <mesh position={[0, -0.35, 0]} geometry={LEG_GEO} material={mats.pants} />
         </group></group>
         {/* Shield bubble */}
         {shieldActive && (
