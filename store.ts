@@ -114,6 +114,7 @@ const getResetState = () => ({
   rocketsRemaining:    ROCKETS_PER_LEVEL,
   rocketsUsedThisLevel:0,
   spaceGemsCollected:  0,
+  spaceKills:          0,
   shipShieldConsumed:  false,
 });
 
@@ -162,6 +163,7 @@ interface GameState {
   rocketsRemaining:     number;
   rocketsUsedThisLevel: number;
   spaceGemsCollected:   number;
+  spaceKills:           number;
   shipShieldConsumed:   boolean;   // true after Delta passive shield absorbs one hit
 
   // Original actions (all unchanged)
@@ -199,6 +201,7 @@ interface GameState {
   confirmAircraftAndEnterSpace:  () => void;
   fireRocket:                    () => void;
   collectSpaceGem:               (value: number) => void;
+  registerSpaceKill:             () => void;
   advanceSpaceLevel:             () => void;
   takeDamageSpace:               () => void;
 }
@@ -254,6 +257,7 @@ export const useStore = create<GameState>((set, get) => ({
   rocketsRemaining:     ROCKETS_PER_LEVEL,
   rocketsUsedThisLevel: 0,
   spaceGemsCollected:   0,
+  spaceKills:           0,
   shipShieldConsumed:   false,
 
   // ── helpers ────────────────────────────────────────────────────────────────
@@ -539,9 +543,7 @@ export const useStore = create<GameState>((set, get) => ({
       collectedLetters:     [],
       gemsCollected:        0,
       spaceGemsCollected:   0,
-      rocketsRemaining:     ROCKETS_PER_LEVEL,
-      rocketsUsedThisLevel: 0,
-      distance:             0,
+      spaceKills:           0,
       shipShieldConsumed:   false,
       lives:                3,
       laneCount:            3,
@@ -594,6 +596,10 @@ export const useStore = create<GameState>((set, get) => ({
     }));
   },
 
+  registerSpaceKill: () => {
+    set(s => ({ spaceKills: s.spaceKills + 1 }));
+  },
+
   // ── NEW: advance to next space level or trigger VICTORY ────────────────────
   advanceSpaceLevel: () => {
     const { level, score, highScore, distance, gemsCollected, achievements } = get();
@@ -635,6 +641,7 @@ export const useStore = create<GameState>((set, get) => ({
       status:               GameStatus.PLAYING,
       collectedLetters:     [],
       spaceGemsCollected:   0,
+      spaceKills:           0,
       rocketsRemaining:     ROCKETS_PER_LEVEL,
       rocketsUsedThisLevel: 0,
       shipShieldConsumed:   false,
