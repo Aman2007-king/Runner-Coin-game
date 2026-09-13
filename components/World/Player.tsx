@@ -484,7 +484,7 @@ export const Player: React.FC = () => {
       <group ref={bodyRef} position={[0, 1.1, 0]}>
         {ASSET_CONFIG.useRealCharacterModel ? (
           <AssetFallbackBoundary fallback={PrimitiveBody}>
-            <Suspense fallback={null}>
+            <Suspense fallback={PrimitiveBody}>
               <RealCharacterModel />
             </Suspense>
           </AssetFallbackBoundary>
