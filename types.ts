@@ -216,7 +216,7 @@ export const AIRCRAFT_SPECS: Record<AircraftModel, AircraftSpec> = {
 export const ROCKETS_PER_LEVEL      = 3;
 export const MAX_SPACE_LEVEL        = 10;
 export const SPACE_GEM_VALUE        = 150;
-export const SPACE_GEM_TARGET_BASE  = 30;  // gems needed per space level = level * this
+export const SPACE_GEM_TARGET_BASE  = 20;  // gems needed per space level = level * this
 export const ENEMY_BULLET_SPEED     = 18;
 export const GEM_MAGNET_RADIUS      = 12;
 
