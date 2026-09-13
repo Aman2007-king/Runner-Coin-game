@@ -219,3 +219,15 @@ export const SPACE_GEM_VALUE        = 150;
 export const SPACE_GEM_TARGET_BASE  = 30;  // gems needed per space level = level * this
 export const ENEMY_BULLET_SPEED     = 18;
 export const GEM_MAGNET_RADIUS      = 12;
+
+// ── Real asset pipeline ──────────────────────────────────────────────────────
+// Everything renders procedurally (primitive geometry + canvas textures) by
+// default. Drop real texture/model files into /public (see
+// /public/ASSETS_README.md for exactly what to add and where to get it free),
+// then flip these to `true` and rebuild to switch that piece over to the real
+// asset. Leaving a flag `true` with no matching file present falls back to
+// the procedural version automatically — it will never crash the game.
+export const ASSET_CONFIG = {
+  useRealGroundTextures: true,
+  useRealCharacterModel: false,
+};
