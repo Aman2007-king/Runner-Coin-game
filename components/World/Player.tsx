@@ -1,11 +1,12 @@
 /**
  * @license SPDX-License-Identifier: Apache-2.0
  */
-import React, { useRef, useEffect, useMemo } from 'react';
+import React, { useRef, useEffect, useMemo, Suspense } from 'react';
 import { useFrame } from '@react-three/fiber';
+import { useGLTF, useAnimations } from '@react-three/drei';
 import * as THREE from 'three';
 import { useStore } from '../../store';
-import { LANE_WIDTH, GameStatus, SkinType, AircraftModel, AIRCRAFT_SPECS } from '../../types';
+import { LANE_WIDTH, GameStatus, SkinType, AircraftModel, AIRCRAFT_SPECS, ASSET_CONFIG } from '../../types';
 import { audio } from '../System/Audio';
 import { IS_MOBILE } from '../../utils/device';
 
@@ -23,6 +24,37 @@ const HIPS_GEO   = new THREE.CylinderGeometry(0.16, 0.16, 0.2);
 const LEG_GEO    = new THREE.BoxGeometry(0.15, 0.7, 0.15);
 const SHADOW_GEO = new THREE.CircleGeometry(0.5, IS_MOBILE ? 16 : 32);
 const SHIELD_GEO = new THREE.SphereGeometry(1, IS_MOBILE ? 12 : 20, IS_MOBILE ? 12 : 20);
+
+// ── Real character model — used once you drop /public/models/runner.glb and
+//    flip ASSET_CONFIG.useRealCharacterModel (see /public/ASSETS_README.md).
+//    Falls back to the primitive stick-figure below if the file is missing,
+//    fails to load, or has no recognizable run-cycle animation clip.
+class AssetFallbackBoundary extends React.Component<{ fallback: React.ReactNode; children: React.ReactNode }, { failed: boolean }> {
+  constructor(props: { fallback: React.ReactNode; children: React.ReactNode }) {
+    super(props);
+    this.state = { failed: false };
+  }
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch() { /* expected until the real model file is added — no need to log */ }
+  render() { return this.state.failed ? this.props.fallback : this.props.children; }
+}
+
+const RUN_CLIP_NAMES = ['Run', 'Running', 'run', 'running', 'RunCycle', 'Armature|Run', 'Take 001'];
+
+const RealCharacterModel: React.FC = () => {
+  const group = useRef<THREE.Group>(null);
+  const { scene, animations } = useGLTF('/models/runner.glb');
+  const { actions } = useAnimations(animations, group);
+
+  useEffect(() => {
+    const clipName = RUN_CLIP_NAMES.find(n => actions[n]) ?? Object.keys(actions)[0];
+    const action = clipName ? actions[clipName] : undefined;
+    action?.reset().play();
+    return () => { action?.stop(); };
+  }, [actions]);
+
+  return <primitive ref={group} object={scene} scale={0.01} position={[0, -1.1, 0]} />;
+};
 
 // ── NEW: Spacecraft geometries ─────────────────────────────────────────────────
 const SHIP_NOSE_GEO   = new THREE.ConeGeometry(0.28, 0.9, IS_MOBILE ? 6 : 8);
@@ -413,38 +445,50 @@ export const Player: React.FC = () => {
   }
 
   // ── Phase 1: human runner ───────────────────────────────────────────────────
+  const PrimitiveBody = (
+    <>
+      {/* Torso */}
+      <mesh castShadow position={[0, 0.2, 0]} geometry={TORSO_GEO} material={mats.shirt} />
+      {/* Backpack */}
+      <mesh position={[0, 0.22, -0.16]}>
+        <boxGeometry args={[0.22, 0.32, 0.14]} />
+        <meshStandardMaterial color={mats.pants.color} roughness={0.8} />
+      </mesh>
+      {/* Head */}
+      <mesh position={[0, 0.6, 0]} castShadow geometry={HEAD_GEO} material={mats.skin} />
+      {/* Right arm */}
+      <group position={[0.32, 0.4, 0]}><group ref={rArmRef}>
+        <mesh position={[0, -0.25, 0]} geometry={ARM_GEO} material={mats.skin} castShadow />
+        <mesh position={[0, -0.55, 0]} geometry={JOINT_GEO} material={mats.glow} />
+      </group></group>
+      {/* Left arm */}
+      <group position={[-0.32, 0.4, 0]}><group ref={lArmRef}>
+        <mesh position={[0, -0.25, 0]} geometry={ARM_GEO} material={mats.skin} castShadow />
+        <mesh position={[0, -0.55, 0]} geometry={JOINT_GEO} material={mats.glow} />
+      </group></group>
+      {/* Hips */}
+      <mesh position={[0, -0.15, 0]} geometry={HIPS_GEO} material={mats.pants} castShadow />
+      {/* Right leg */}
+      <group position={[0.12, -0.25, 0]}><group ref={rLegRef}>
+        <mesh position={[0, -0.35, 0]} geometry={LEG_GEO} material={mats.pants} castShadow />
+      </group></group>
+      {/* Left leg */}
+      <group position={[-0.12, -0.25, 0]}><group ref={lLegRef}>
+        <mesh position={[0, -0.35, 0]} geometry={LEG_GEO} material={mats.pants} castShadow />
+      </group></group>
+    </>
+  );
+
   return (
     <group ref={groupRef}>
       <group ref={bodyRef} position={[0, 1.1, 0]}>
-        {/* Torso */}
-        <mesh castShadow position={[0, 0.2, 0]} geometry={TORSO_GEO} material={mats.shirt} />
-        {/* Backpack */}
-        <mesh position={[0, 0.22, -0.16]}>
-          <boxGeometry args={[0.22, 0.32, 0.14]} />
-          <meshStandardMaterial color={mats.pants.color} roughness={0.8} />
-        </mesh>
-        {/* Head */}
-        <mesh position={[0, 0.6, 0]} castShadow geometry={HEAD_GEO} material={mats.skin} />
-        {/* Right arm */}
-        <group position={[0.32, 0.4, 0]}><group ref={rArmRef}>
-          <mesh position={[0, -0.25, 0]} geometry={ARM_GEO} material={mats.skin} />
-          <mesh position={[0, -0.55, 0]} geometry={JOINT_GEO} material={mats.glow} />
-        </group></group>
-        {/* Left arm */}
-        <group position={[-0.32, 0.4, 0]}><group ref={lArmRef}>
-          <mesh position={[0, -0.25, 0]} geometry={ARM_GEO} material={mats.skin} />
-          <mesh position={[0, -0.55, 0]} geometry={JOINT_GEO} material={mats.glow} />
-        </group></group>
-        {/* Hips */}
-        <mesh position={[0, -0.15, 0]} geometry={HIPS_GEO} material={mats.pants} />
-        {/* Right leg */}
-        <group position={[0.12, -0.25, 0]}><group ref={rLegRef}>
-          <mesh position={[0, -0.35, 0]} geometry={LEG_GEO} material={mats.pants} />
-        </group></group>
-        {/* Left leg */}
-        <group position={[-0.12, -0.25, 0]}><group ref={lLegRef}>
-          <mesh position={[0, -0.35, 0]} geometry={LEG_GEO} material={mats.pants} />
-        </group></group>
+        {ASSET_CONFIG.useRealCharacterModel ? (
+          <AssetFallbackBoundary fallback={PrimitiveBody}>
+            <Suspense fallback={null}>
+              <RealCharacterModel />
+            </Suspense>
+          </AssetFallbackBoundary>
+        ) : PrimitiveBody}
         {/* Shield bubble */}
         {shieldActive && (
           <mesh ref={shieldRef} position={[0, 0.2, 0]} geometry={SHIELD_GEO} material={mats.shield} />
