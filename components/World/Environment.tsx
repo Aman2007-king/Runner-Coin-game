@@ -1,11 +1,12 @@
 /**
  * @license SPDX-License-Identifier: Apache-2.0
  */
-import React, { useRef, useMemo } from 'react';
+import React, { useRef, useMemo, Suspense } from 'react';
 import { useFrame } from '@react-three/fiber';
+import { useTexture } from '@react-three/drei';
 import * as THREE from 'three';
 import { useStore } from '../../store';
-import { LANE_WIDTH, BiomeType, BIOME_BY_LEVEL, BIOME_COLORS } from '../../types';
+import { LANE_WIDTH, BiomeType, BIOME_BY_LEVEL, BIOME_COLORS, ASSET_CONFIG } from '../../types';
 import { IS_MOBILE } from '../../utils/device';
 
 const STAR_COUNT = IS_MOBILE ? 800 : 2000;
@@ -198,13 +199,68 @@ function makePathTexture(floorColor: string, seamColor: string, mossy: boolean) 
   return tex;
 }
 
+// ── Tiny local error boundary — falls back silently, never shows the
+//    full-page crash screen just because an optional asset file is missing.
+class AssetFallbackBoundary extends React.Component<{ fallback: React.ReactNode; children: React.ReactNode }, { failed: boolean }> {
+  constructor(props: { fallback: React.ReactNode; children: React.ReactNode }) {
+    super(props);
+    this.state = { failed: false };
+  }
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch() { /* expected until the real asset file is added — no need to log */ }
+  render() { return this.state.failed ? this.props.fallback : this.props.children; }
+}
+
+const ProceduralPathFloor: React.FC<{ laneCount: number; biome: BiomeType }> = ({ laneCount, biome }) => {
+  const speed  = useStore(s => s.speed);
+  const cols   = BIOME_COLORS[biome];
+  const texture = useMemo(() => makePathTexture(cols.floor, cols.grid, !!MOSS_BIOMES[biome]), [cols.floor, cols.grid, biome]);
+
+  useFrame((_, delta) => {
+    if (!texture) return;
+    texture.offset.y += Math.max(speed, 5) * Math.min(delta, 0.05) * 0.08;
+  });
+
+  return (
+    <mesh position={[0, -0.02, -20]} rotation={[-Math.PI/2, 0, 0]}>
+      <planeGeometry args={[laneCount * LANE_WIDTH, 200]} />
+      {texture
+        ? <meshStandardMaterial map={texture} roughness={0.95} />
+        : <meshStandardMaterial color={cols.floor} roughness={0.95} />}
+    </mesh>
+  );
+};
+
+// ── Real photographic ground texture — used once you drop files into
+//    /public/textures and flip ASSET_CONFIG.useRealGroundTextures (see
+//    /public/ASSETS_README.md). Throws (→ caught by AssetFallbackBoundary
+//    above) if the files aren't there yet.
+const RealPathFloor: React.FC<{ laneCount: number }> = ({ laneCount }) => {
+  const speed = useStore(s => s.speed);
+  const [diffuse] = useTexture(['/textures/path_diffuse.jpg']);
+  const ref = useRef<THREE.MeshStandardMaterial>(null);
+
+  useMemo(() => {
+    diffuse.wrapS = THREE.RepeatWrapping;
+    diffuse.wrapT = THREE.RepeatWrapping;
+    diffuse.repeat.set(1, 25);
+  }, [diffuse]);
+
+  useFrame((_, delta) => {
+    diffuse.offset.y += Math.max(speed, 5) * Math.min(delta, 0.05) * 0.08;
+  });
+
+  return (
+    <mesh position={[0, -0.02, -20]} rotation={[-Math.PI/2, 0, 0]}>
+      <planeGeometry args={[laneCount * LANE_WIDTH, 200]} />
+      <meshStandardMaterial ref={ref} map={diffuse} roughness={0.95} />
+    </mesh>
+  );
+};
+
 const LaneGuides: React.FC<{ biome: BiomeType }> = ({ biome }) => {
   const laneCount = useStore(s => s.laneCount);
-  const speed     = useStore(s => s.speed);
   const cols      = BIOME_COLORS[biome];
-  const matRef    = useRef<THREE.MeshStandardMaterial>(null);
-
-  const texture = useMemo(() => makePathTexture(cols.floor, cols.grid, !!MOSS_BIOMES[biome]), [cols.floor, cols.grid, biome]);
 
   const separators = useMemo(() => {
     const xs: number[] = [];
@@ -213,19 +269,17 @@ const LaneGuides: React.FC<{ biome: BiomeType }> = ({ biome }) => {
     return xs;
   }, [laneCount]);
 
-  useFrame((_, delta) => {
-    if (!texture) return;
-    texture.offset.y += Math.max(speed, 5) * Math.min(delta, 0.05) * 0.08;
-  });
-
   return (
     <group position={[0, 0.02, 0]}>
-      <mesh position={[0, -0.02, -20]} rotation={[-Math.PI/2, 0, 0]}>
-        <planeGeometry args={[laneCount * LANE_WIDTH, 200]} />
-        {texture
-          ? <meshStandardMaterial ref={matRef} map={texture} roughness={0.95} />
-          : <meshStandardMaterial color={cols.floor} roughness={0.95} />}
-      </mesh>
+      {ASSET_CONFIG.useRealGroundTextures ? (
+        <AssetFallbackBoundary fallback={<ProceduralPathFloor laneCount={laneCount} biome={biome} />}>
+          <Suspense fallback={null}>
+            <RealPathFloor laneCount={laneCount} />
+          </Suspense>
+        </AssetFallbackBoundary>
+      ) : (
+        <ProceduralPathFloor laneCount={laneCount} biome={biome} />
+      )}
       {separators.map((x, i) => (
         <mesh key={i} position={[x, 0, -20]} rotation={[-Math.PI/2, 0, 0]}>
           <planeGeometry args={[0.06, 200]} />
@@ -268,12 +322,24 @@ const BIOME_PROPS: Partial<Record<BiomeType, PropKind[]>> = {
   [BiomeType.ICE_TEMPLE]:    ['ice_spike', 'ice_pillar', 'ice_spike'],
 };
 
+const BarkContext = React.createContext<THREE.Texture | null>(null);
+
+const RealBarkProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [bark] = useTexture(['/textures/bark_diffuse.jpg']);
+  return <BarkContext.Provider value={bark}>{children}</BarkContext.Provider>;
+};
+
 const Prop: React.FC<{ kind: PropKind; cols: { accent: string; dir: string; floor: string; grid: string } }> = ({ kind, cols }) => {
+  const bark = React.useContext(BarkContext);
+  const trunkMat = bark
+    ? { map: bark, color: '#ffffff' as const }
+    : { color: cols.grid };
+
   switch (kind) {
     case 'palm':
       return (
         <>
-          <mesh position={[0, 1.5, 0]}><cylinderGeometry args={[0.15, 0.22, 3, 6]} /><meshStandardMaterial color={cols.grid} roughness={0.9} /></mesh>
+          <mesh position={[0, 1.5, 0]}><cylinderGeometry args={[0.15, 0.22, 3, 6]} /><meshStandardMaterial {...trunkMat} roughness={0.9} /></mesh>
           <mesh position={[0, 2.7, 0]}><coneGeometry args={[1.7, 1.3, 7]} /><meshStandardMaterial color={cols.dir} roughness={0.8} /></mesh>
           <mesh position={[0, 3.4, 0]}><coneGeometry args={[1.3, 1.6, 7]} /><meshStandardMaterial color={cols.accent} roughness={0.8} /></mesh>
         </>
@@ -281,7 +347,7 @@ const Prop: React.FC<{ kind: PropKind; cols: { accent: string; dir: string; floo
     case 'pine':
       return (
         <>
-          <mesh position={[0, 1, 0]}><cylinderGeometry args={[0.15, 0.2, 2, 6]} /><meshStandardMaterial color={cols.grid} roughness={0.9} /></mesh>
+          <mesh position={[0, 1, 0]}><cylinderGeometry args={[0.15, 0.2, 2, 6]} /><meshStandardMaterial {...trunkMat} roughness={0.9} /></mesh>
           <mesh position={[0, 2.6, 0]}><coneGeometry args={[1.1, 2.2, 7]} /><meshStandardMaterial color={cols.accent} roughness={0.8} /></mesh>
           <mesh position={[0, 3.8, 0]}><coneGeometry args={[0.8, 1.8, 7]} /><meshStandardMaterial color={cols.dir} roughness={0.8} /></mesh>
           <mesh position={[0, 4.8, 0]}><coneGeometry args={[0.5, 1.4, 7]} /><meshStandardMaterial color={cols.accent} roughness={0.8} /></mesh>
@@ -743,7 +809,15 @@ export const Environment: React.FC = () => {
       <WideGround biome={biome} />
       <LaneGuides biome={biome} />
       <SkyOrb biome={biome} />
-      <SideScenery biome={biome} />
+      {ASSET_CONFIG.useRealGroundTextures ? (
+        <AssetFallbackBoundary fallback={<SideScenery biome={biome} />}>
+          <Suspense fallback={<SideScenery biome={biome} />}>
+            <RealBarkProvider><SideScenery biome={biome} /></RealBarkProvider>
+          </Suspense>
+        </AssetFallbackBoundary>
+      ) : (
+        <SideScenery biome={biome} />
+      )}
       <CanopyOverhead biome={biome} />
       <PathArches biome={biome} />
       <AmbientParticles biome={biome} />
