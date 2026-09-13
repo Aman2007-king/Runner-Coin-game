@@ -17,6 +17,11 @@ import { audio } from '../System/Audio';
 import { IS_MOBILE } from '../../utils/device';
 
 const MAX_DELTA  = 0.05;
+// Space-phase entities spawn much closer than runner obstacles (SPAWN_DISTANCE=120
+// is fine for a ground path you can see far down, but at that range in open space
+// enemies/asteroids are tiny, barely-distinguishable specks against the starfield
+// until they've closed most of that distance).
+const SPACE_SPAWN_DISTANCE = 65;
 const MISSILE_V  = 28;
 const OBS_H      = 1.6;
 
@@ -149,6 +154,7 @@ export const LevelManager: React.FC = () => {
   const enemySpawnTimer    = useRef(0);
   const asteroidSpawnTimer = useRef(0);
   const gemSpawnTimer      = useRef(0);
+  const spaceLevelTimer    = useRef(0); // seconds spent in the current space level
   const autoFireTimer      = useRef(0);
 
   const [, setPopTick] = useState(0);
@@ -193,6 +199,7 @@ export const LevelManager: React.FC = () => {
       asteroidSpawnTimer.current = 2.0;
       gemSpawnTimer.current      = 0.5;
       autoFireTimer.current      = 0;
+      spaceLevelTimer.current    = 0;
     } else if (levelUp && level > 1) {
       if (gamePhase === 1) {
         objects.current = objects.current.filter(o => o.position[2] > -80);
@@ -208,6 +215,7 @@ export const LevelManager: React.FC = () => {
         );
         enemySpawnTimer.current    = 1.5;
         asteroidSpawnTimer.current = 2.0;
+        spaceLevelTimer.current    = 0;
       }
       setTick(t => t+1);
     } else if (!nowPlaying) {
@@ -248,6 +256,15 @@ export const LevelManager: React.FC = () => {
     let changed  = false;
     const kept:  GameObject[] = [];
 
+    // ── Backup progression: a level can never truly stall. If 45s pass
+    //    without hitting the gem quota, advance anyway. ────────────────────
+    spaceLevelTimer.current += dt;
+    if (spaceLevelTimer.current >= 45) {
+      spaceLevelTimer.current = 0;
+      advanceSpaceLevel();
+      return;
+    }
+
     // ── Auto-fire player bullets ────────────────────────────────────────────
     autoFireTimer.current -= dt;
     if (autoFireTimer.current <= 0) {
@@ -266,10 +283,10 @@ export const LevelManager: React.FC = () => {
     // ── Enemy spawn ─────────────────────────────────────────────────────────
     enemySpawnTimer.current -= dt;
     if (enemySpawnTimer.current <= 0) {
-      const interval = Math.max(0.5, 2.2 - spLvl * 0.28);
-      enemySpawnTimer.current = interval + Math.random() * 0.4;
+      const interval = Math.max(0.35, 1.4 - spLvl * 0.15);
+      enemySpawnTimer.current = interval + Math.random() * 0.3;
       const isMedium = Math.random() < 0.3 + spLvl * 0.05;
-      const count    = Math.random() < 0.35 + spLvl * 0.06 ? 2 : 1;
+      const count    = Math.random() < 0.5 + spLvl * 0.06 ? 2 : 1;
       const maxLane  = Math.floor(laneCount / 2);
       for (let k = 0; k < count; k++) {
         const ex = (Math.floor(Math.random() * (maxLane * 2 + 1)) - maxLane) * LANE_WIDTH;
@@ -277,11 +294,11 @@ export const LevelManager: React.FC = () => {
         objects.current.push({
           id: uuidv4(),
           type: isMedium ? ObjectType.SPACE_ENEMY_MEDIUM : ObjectType.SPACE_ENEMY_SMALL,
-          position: [ex, 0, pz - SPAWN_DISTANCE - Math.random() * 20],
+          position: [ex, 0, pz - SPACE_SPAWN_DISTANCE - Math.random() * 15],
           active: true, color: '#ff2200',
           hp, maxHp: hp,
           fireTimer: 1.2 + Math.random() * 1.5,
-          velocity: [0, 0, 10 + spLvl * 2 + Math.random() * 4],
+          velocity: [0, 0, 14 + spLvl * 2.5 + Math.random() * 4],
         });
       }
       changed = true;
@@ -290,17 +307,17 @@ export const LevelManager: React.FC = () => {
     // ── Asteroid spawn ──────────────────────────────────────────────────────
     asteroidSpawnTimer.current -= dt;
     if (asteroidSpawnTimer.current <= 0) {
-      asteroidSpawnTimer.current = Math.max(0.6, 1.8 - spLvl * 0.12) + Math.random() * 0.3;
+      asteroidSpawnTimer.current = Math.max(0.5, 1.4 - spLvl * 0.1) + Math.random() * 0.25;
       const maxLane = Math.floor(laneCount / 2);
       const ax = (Math.floor(Math.random() * (maxLane * 2 + 1)) - maxLane) * LANE_WIDTH + (Math.random() - 0.5) * LANE_WIDTH * 0.5;
       const big = Math.random() < 0.25;
       objects.current.push({
         id: uuidv4(), type: ObjectType.SPACE_ASTEROID,
-        position: [ax, 0, pz - SPAWN_DISTANCE],
+        position: [ax, 0, pz - SPACE_SPAWN_DISTANCE],
         active: true, color: '#887755',
         radius: big ? 1.3 : 0.85,
         hp: big ? 3 : 1,
-        velocity: [0, 0, 8 + spLvl * 1.5 + Math.random() * 3],
+        velocity: [0, 0, 12 + spLvl * 2 + Math.random() * 3],
       });
       changed = true;
     }
@@ -308,12 +325,12 @@ export const LevelManager: React.FC = () => {
     // ── Space gem spawn ─────────────────────────────────────────────────────
     gemSpawnTimer.current -= dt;
     if (gemSpawnTimer.current <= 0) {
-      gemSpawnTimer.current = 0.35 + Math.random() * 0.35;
+      gemSpawnTimer.current = 0.3 + Math.random() * 0.25;
       const maxLane = Math.floor(laneCount / 2);
       const gx = (Math.floor(Math.random() * (maxLane * 2 + 1)) - maxLane) * LANE_WIDTH;
       objects.current.push({
         id: uuidv4(), type: ObjectType.SPACE_GEM,
-        position: [gx, 0, pz - SPAWN_DISTANCE + 20],
+        position: [gx, 0, pz - SPACE_SPAWN_DISTANCE + 20],
         active: true, color: '#00ffcc', points: SPACE_GEM_VALUE,
       });
       changed = true;
