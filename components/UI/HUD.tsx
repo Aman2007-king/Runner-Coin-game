@@ -1,470 +1,803 @@
 /**
  * @license SPDX-License-Identifier: Apache-2.0
  */
-import React, { useRef, useEffect, useMemo } from 'react';
-import { useFrame } from '@react-three/fiber';
-import * as THREE from 'three';
+import React, { useState, useEffect } from 'react';
+import {
+  Heart, Zap, Trophy, MapPin, Diamond, Rocket, ArrowUpCircle,
+  Shield, Activity, PlusCircle, Play, Palette, Pause,
+  Volume2, VolumeX, Star, Award, Target, CheckCircle2, Crosshair,
+  Crown, Send, Loader2,
+} from 'lucide-react';
 import { useStore } from '../../store';
-import { LANE_WIDTH, GameStatus, SkinType, AircraftModel, AIRCRAFT_SPECS } from '../../types';
+import {
+  GameStatus, GEMINI_COLORS, RUN_SPEED_BASE, SkinType, BiomeType,
+  AircraftModel, AIRCRAFT_SPECS, ROCKETS_PER_LEVEL, SPACE_GEM_TARGET_BASE,
+  BIOME_BY_LEVEL, BIOME_COLORS,
+} from '../../types';
 import { audio } from '../System/Audio';
-import { IS_MOBILE } from '../../utils/device';
+import { saveHighScore, getLeaderboard, LeaderboardEntry } from '../../firebase';
 
-const GRAVITY    = 50;
-const JUMP_FORCE = 16;
-const MAX_DELTA  = 0.05;
-const SLIDE_H    = 0.4;
-
-// ── Static geometries ──────────────────────────────────────────────────────
-const TORSO_GEO  = new THREE.CylinderGeometry(0.25, 0.15, 0.6, 4);
-const HEAD_GEO   = new THREE.BoxGeometry(0.25, 0.3, 0.3);
-const ARM_GEO    = new THREE.BoxGeometry(0.12, 0.6, 0.12);
-const JOINT_GEO  = new THREE.SphereGeometry(0.07);
-const HIPS_GEO   = new THREE.CylinderGeometry(0.16, 0.16, 0.2);
-const LEG_GEO    = new THREE.BoxGeometry(0.15, 0.7, 0.15);
-const SHADOW_GEO = new THREE.CircleGeometry(0.5, IS_MOBILE ? 16 : 32);
-const SHIELD_GEO = new THREE.SphereGeometry(1, IS_MOBILE ? 12 : 20, IS_MOBILE ? 12 : 20);
-
-// ── NEW: Spacecraft geometries ─────────────────────────────────────────────────
-const SHIP_NOSE_GEO   = new THREE.ConeGeometry(0.28, 0.9, IS_MOBILE ? 6 : 8);
-const SHIP_HULL_GEO   = new THREE.CylinderGeometry(0.28, 0.4, 1.1, IS_MOBILE ? 6 : 8);
-const SHIP_CANOPY_GEO = new THREE.SphereGeometry(0.22, IS_MOBILE ? 8 : 12, IS_MOBILE ? 6 : 8, 0, Math.PI * 2, 0, Math.PI / 2);
-const SHIP_WING_GEO   = new THREE.BoxGeometry(1.1, 0.08, 0.55);
-const SHIP_FIN_GEO    = new THREE.BoxGeometry(0.06, 0.4, 0.35);
-const SHIP_ENGINE_GEO = new THREE.CylinderGeometry(0.18, 0.1, 0.5, 6);
-const SHIP_GLOW_GEO   = new THREE.SphereGeometry(0.22, IS_MOBILE ? 6 : 10, IS_MOBILE ? 6 : 10);
-const ROCKET_TRAIL_GEO = new THREE.ConeGeometry(0.18, 0.9, 6);
-
-function buildMaterials(skin: SkinType, immortal: boolean) {
-  // Default skin = an actual adventurer (skin tone / shirt / pants), not a neon robot.
-  // Purchased neon skins keep their uniform glowing-suit look.
-  let skinTone = '#e0a878', shirt = '#3a6ea5', pants = '#4a3826', glow = '#ffcf9e';
-  let uniform  = false;
-  if (immortal)                         { skinTone = shirt = pants = '#ffd700'; glow = '#ffffff'; uniform = true; }
-  else if (skin === SkinType.NEON_BLUE) { skinTone = shirt = pants = '#0066ff'; glow = '#00ffff'; uniform = true; }
-  else if (skin === SkinType.NEON_GOLD) { skinTone = shirt = pants = '#ffaa00'; glow = '#ffff00'; uniform = true; }
-  else if (skin === SkinType.PHANTOM)   { skinTone = shirt = pants = '#333333'; glow = '#ff00ff'; uniform = true; }
-  const rough = uniform ? 0.3 : 0.7, metal = uniform ? 0.8 : 0.1;
-  return {
-    skin:   new THREE.MeshStandardMaterial({ color: skinTone, roughness: rough, metalness: metal }),
-    shirt:  new THREE.MeshStandardMaterial({ color: shirt,    roughness: rough, metalness: metal }),
-    pants:  new THREE.MeshStandardMaterial({ color: pants,    roughness: rough, metalness: metal }),
-    arm:    new THREE.MeshStandardMaterial({ color: shirt,    roughness: rough, metalness: metal }), // legacy alias
-    joint:  new THREE.MeshStandardMaterial({ color: '#111111', roughness: 0.7, metalness: 0.5 }),
-    glow:   new THREE.MeshBasicMaterial({ color: glow }),
-    shadow: new THREE.MeshBasicMaterial({ color: '#000000', opacity: 0.3, transparent: true }),
-    shield: new THREE.MeshStandardMaterial({
-      color: '#4488ff', transparent: true, opacity: 0.15,
-      wireframe: true, emissive: '#00aaff', emissiveIntensity: 1.5,
-      side: THREE.DoubleSide,
-    }),
-  };
-}
-
-// ── NEW: build ship materials based on aircraft model ─────────────────────────
-function buildShipMaterials(model: AircraftModel) {
-  const spec  = AIRCRAFT_SPECS[model];
-  const col   = spec.color;
-  return {
-    body:   new THREE.MeshStandardMaterial({ color: '#0a0a1a', roughness: 0.3, metalness: 0.9 }),
-    accent: new THREE.MeshStandardMaterial({ color: col, roughness: 0.1, metalness: 1.0, emissive: col, emissiveIntensity: 0.6 }),
-    canopy: new THREE.MeshStandardMaterial({ color: '#66d9ff', roughness: 0.05, metalness: 0.2, transparent: true, opacity: 0.8, emissive: '#66d9ff', emissiveIntensity: 0.3 }),
-    engine: new THREE.MeshStandardMaterial({ color: '#222244', roughness: 0.5, metalness: 0.7 }),
-    glow:   new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.85 }),
-    trail:  new THREE.MeshBasicMaterial({ color: '#ff8800', transparent: true, opacity: 0.5 }),
-    shield: new THREE.MeshStandardMaterial({
-      color: '#00ff88', transparent: true, opacity: 0.12,
-      wireframe: true, emissive: '#00ff88', emissiveIntensity: 2.0, side: THREE.DoubleSide,
-    }),
-  };
-}
-
-export const Player: React.FC = () => {
-  const groupRef  = useRef<THREE.Group>(null);
-  const bodyRef   = useRef<THREE.Group>(null);
-  const shadowRef = useRef<THREE.Mesh>(null);
-  const shieldRef = useRef<THREE.Mesh>(null);
-  const lArmRef   = useRef<THREE.Group>(null);
-  const rArmRef   = useRef<THREE.Group>(null);
-  const lLegRef   = useRef<THREE.Group>(null);
-  const rLegRef   = useRef<THREE.Group>(null);
-
-  const {
-    status, laneCount, takeDamage, hasDoubleJump, activateImmortality,
-    isImmortalityActive, currentSkin, shieldActive, speedBoostActive,
-    startSlide, isSliding,
-    // ── NEW ─────────────────────────────────────────────────────────────────
-    gamePhase, selectedAircraft, takeDamageSpace, shipShieldConsumed,
-    rocketsRemaining, fireRocket,
-  } = useStore();
-
-  const [lane, setLane] = React.useState(0);
-  const targetX         = useRef(0);
-  const isJumping       = useRef(false);
-  const velocityY       = useRef(0);
-  const jumpsDone       = useRef(0);
-  const spinRot         = useRef(0);
-  const touchX          = useRef(0);
-  const touchY          = useRef(0);
-  const isInvincible    = useRef(false);
-  const lastHitTime     = useRef(0);
-
-  // ── NEW: ship mouse target in Phase 3 ────────────────────────────────────
-  const shipTargetX = useRef(0);
-  const shipTargetY = useRef(0);
-
-  const mats = useMemo(
-    () => buildMaterials(currentSkin, isImmortalityActive),
-    [currentSkin, isImmortalityActive],
+// ─── Mute button ──────────────────────────────────────────────────────────────
+const MuteBtn: React.FC = () => {
+  const { isMuted, toggleMute } = useStore();
+  return (
+    <button onClick={toggleMute} className="p-2 bg-black/50 border border-white/10 rounded-lg hover:bg-white/10 transition-all pointer-events-auto">
+      {isMuted ? <VolumeX className="text-gray-400 w-5 h-5" /> : <Volume2 className="text-white w-5 h-5" />}
+    </button>
   );
-  useEffect(() => () => { Object.values(mats).forEach((m: any) => m.dispose()); }, [mats]);
+};
 
-  // ── NEW: ship materials ───────────────────────────────────────────────────
-  const shipModel = selectedAircraft ?? AircraftModel.ALPHA;
-  const shipMats  = useMemo(() => buildShipMaterials(shipModel), [shipModel]);
-  useEffect(() => () => { Object.values(shipMats).forEach((m: any) => m.dispose()); }, [shipMats]);
+// ─── XP bar ───────────────────────────────────────────────────────────────────
+const XPBar: React.FC = () => {
+  const { xp, playerLevel } = useStore();
+  const needed = playerLevel * playerLevel * 500;
+  const prev   = (playerLevel-1)*(playerLevel-1)*500;
+  const pct    = Math.min(100, Math.round(((xp - prev) / (needed - prev)) * 100));
+  return (
+    <div className="flex items-center gap-2 bg-black/50 px-3 py-1 rounded-full border border-white/10">
+      <Star className="text-yellow-400 w-4 h-4" />
+      <span className="text-yellow-300 text-xs font-bold font-mono">Lv.{playerLevel}</span>
+      <div className="w-20 h-2 bg-gray-800 rounded-full overflow-hidden">
+        <div className="h-full bg-gradient-to-r from-yellow-500 to-orange-400 transition-all duration-500" style={{ width: `${pct}%` }} />
+      </div>
+      <span className="text-gray-400 text-xs font-mono">{pct}%</span>
+    </div>
+  );
+};
 
-  // Reset on new game
+// ─── Combo display ────────────────────────────────────────────────────────────
+const ComboDisplay: React.FC = () => {
+  const { comboMultiplier, comboStreak } = useStore();
+  if (comboMultiplier < 2) return null;
+  return (
+    <div className={`text-center animate-pulse ${comboMultiplier >= 8 ? 'text-red-400' : comboMultiplier >= 5 ? 'text-orange-400' : 'text-yellow-400'}`}>
+      <div className="text-2xl font-black font-cyber drop-shadow-[0_0_8px_currentColor]">×{comboMultiplier} COMBO</div>
+      <div className="text-xs font-mono text-gray-400">{comboStreak} streak</div>
+    </div>
+  );
+};
+
+// ─── Achievement toast ────────────────────────────────────────────────────────
+const AchievementToast: React.FC = () => {
+  const { newAchievements, achievements, dismissAchievements } = useStore();
+  const items = achievements.filter(a => newAchievements.includes(a.id));
+  if (!items.length) return null;
+  return (
+    <div className="absolute bottom-24 left-1/2 -translate-x-1/2 flex flex-col gap-2 z-[300] pointer-events-auto">
+      {items.map(a => (
+        <div key={a.id} onClick={dismissAchievements}
+          className="flex items-center gap-3 bg-yellow-900/90 border border-yellow-500 px-4 py-3 rounded-xl shadow-[0_0_20px_rgba(255,215,0,0.3)] cursor-pointer">
+          <span className="text-2xl">{a.icon}</span>
+          <div>
+            <div className="text-yellow-300 font-bold text-sm">Achievement Unlocked!</div>
+            <div className="text-white font-black">{a.label}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// ─── Daily missions panel ─────────────────────────────────────────────────────
+const MissionsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const { dailyMissions, claimMissionReward } = useStore();
+  return (
+    <div className="absolute inset-0 bg-black/95 z-[110] text-white pointer-events-auto flex flex-col items-center justify-center p-6">
+      <h2 className="text-3xl font-black text-cyan-400 mb-6 tracking-widest">DAILY MISSIONS</h2>
+      <div className="w-full max-w-md space-y-4 mb-8">
+        {dailyMissions.map(m => {
+          const pct    = Math.min(100, Math.round((m.current / m.target) * 100));
+          const claimed = m.claimed;
+          return (
+            <div key={m.id} className="bg-gray-900 border border-gray-700 rounded-xl p-4">
+              <div className="flex justify-between items-start mb-2">
+                <div>
+                  <div className="font-bold text-lg">{m.label}</div>
+                  <div className="text-gray-400 text-sm">
+                    {m.type === 'gems'     ? `Collect ${m.target} gems`    :
+                     m.type === 'distance' ? `Run ${m.target} light years` :
+                     m.type === 'letters' ? `Collect ${m.target} letters` :
+                                            'Complete a run without damage'}
+                  </div>
+                </div>
+                <div className="text-yellow-400 font-bold flex items-center gap-1">
+                  <Diamond className="w-4 h-4" />{m.reward}
+                </div>
+              </div>
+              <div className="h-2 bg-gray-700 rounded-full overflow-hidden mb-2">
+                <div className="h-full bg-cyan-500 transition-all" style={{ width: `${pct}%` }} />
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-gray-500">{claimed ? 'Claimed' : m.completed ? 'Complete!' : `${m.current}/${m.target}`}</span>
+                {m.completed && !claimed && (
+                  <button onClick={() => claimMissionReward(m.id)}
+                    className="flex items-center gap-1 bg-yellow-600 px-3 py-1 rounded font-bold text-sm hover:bg-yellow-500">
+                    <CheckCircle2 className="w-4 h-4" /> Claim
+                  </button>
+                )}
+                {claimed && <CheckCircle2 className="text-green-400 w-5 h-5" />}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <button onClick={onClose} className="px-10 py-3 bg-white text-black font-black rounded-full hover:scale-105 transition-all">BACK</button>
+    </div>
+  );
+};
+
+// ─── Achievements panel ───────────────────────────────────────────────────────
+const AchievementsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const { achievements } = useStore();
+  return (
+    <div className="absolute inset-0 bg-black/95 z-[110] text-white pointer-events-auto flex flex-col items-center justify-center p-6">
+      <h2 className="text-3xl font-black text-yellow-400 mb-6 tracking-widest">ACHIEVEMENTS</h2>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-lg mb-8 overflow-y-auto max-h-[60vh]">
+        {achievements.map(a => (
+          <div key={a.id} className={`p-3 rounded-xl border flex items-center gap-3 ${a.unlocked ? 'border-yellow-500 bg-yellow-900/20' : 'border-gray-800 bg-gray-900/50 opacity-50'}`}>
+            <span className="text-2xl">{a.icon}</span>
+            <div>
+              <div className="font-bold text-sm">{a.label}</div>
+              <div className="text-gray-400 text-xs">{a.description}</div>
+            </div>
+            {a.unlocked && <CheckCircle2 className="ml-auto text-yellow-400 w-5 h-5 flex-shrink-0" />}
+          </div>
+        ))}
+      </div>
+      <button onClick={onClose} className="px-10 py-3 bg-white text-black font-black rounded-full hover:scale-105 transition-all">BACK</button>
+    </div>
+  );
+};
+
+// ─── Global leaderboard panel ──────────────────────────────────────────────
+const LeaderboardPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const [entries, setEntries] = useState<LeaderboardEntry[] | null>(null);
+  const [failed, setFailed]   = useState(false);
+
   useEffect(() => {
-    if (status === GameStatus.PLAYING) {
-      isJumping.current = false; jumpsDone.current = 0;
-      velocityY.current = 0;    spinRot.current   = 0;
-      setLane(0);
-      if (groupRef.current) groupRef.current.position.set(0, 0, 0);
-      if (bodyRef.current)  bodyRef.current.rotation.x = 0;
-    }
-  }, [status]);
-
-  // Clamp lane when laneCount changes
-  useEffect(() => {
-    const max = Math.floor(laneCount / 2);
-    setLane(l => Math.max(Math.min(l, max), -max));
-  }, [laneCount]);
-
-  const doJump = () => {
-    const maxJ = hasDoubleJump ? 2 : 1;
-    if (!isJumping.current) {
-      audio.playJump(false);
-      isJumping.current = true; jumpsDone.current = 1; velocityY.current = JUMP_FORCE;
-    } else if (jumpsDone.current < maxJ) {
-      audio.playJump(true);
-      jumpsDone.current++; velocityY.current = JUMP_FORCE; spinRot.current = 0;
-    }
-  };
-
-  const doSlide = () => {
-    if (!isJumping.current) { startSlide(); audio.playSlide(); }
-  };
-
-  const doFireRocket = () => {
-    if (status !== GameStatus.PLAYING || gamePhase !== 3) return;
-    if (rocketsRemaining > 0) {
-      fireRocket();
-      window.dispatchEvent(new CustomEvent('player-fire-rocket', { detail: { lane } }));
-    }
-  };
-
-  // ── Keyboard (Phase 1 — original + NEW Phase 3 controls) ──────────────────
-  useEffect(() => {
-    const down = (e: KeyboardEvent) => {
-      if (status !== GameStatus.PLAYING) return;
-
-      // ── NEW: Phase 3 keyboard ──────────────────────────────────────────────
-      if (gamePhase === 3) {
-        const max = Math.floor(laneCount / 2);
-        if (e.key === 'ArrowLeft'  || e.key === 'a') setLane(l => Math.max(l - 1, -max));
-        if (e.key === 'ArrowRight' || e.key === 'd') setLane(l => Math.min(l + 1,  max));
-        if (e.key === 'r' || e.key === 'R') doFireRocket();
-        return;
-      }
-
-      // Phase 1 original controls
-      const max = Math.floor(laneCount / 2);
-      if (e.key === 'ArrowLeft'  || e.key === 'a') setLane(l => Math.max(l - 1, -max));
-      if (e.key === 'ArrowRight' || e.key === 'd') setLane(l => Math.min(l + 1,  max));
-      if (e.key === 'ArrowUp'    || e.key === 'w') doJump();
-      if (e.key === 'ArrowDown'  || e.key === 's') doSlide();
-      if (e.key === ' ')                            activateImmortality();
-    };
-    window.addEventListener('keydown', down);
-    return () => window.removeEventListener('keydown', down);
-  }, [status, laneCount, hasDoubleJump, activateImmortality, gamePhase, rocketsRemaining, fireRocket, lane]);
-
-  // ── NEW: on-screen ROCKET button (HUD dispatches this on tap) ──────────────
-  useEffect(() => {
-    window.addEventListener('fire-rocket-ui', doFireRocket);
-    return () => window.removeEventListener('fire-rocket-ui', doFireRocket);
-  }, [status, gamePhase, rocketsRemaining, fireRocket, lane]);
-
-  // Touch (original Phase 1 logic + NEW Phase 3 swipe)
-  useEffect(() => {
-    const start = (e: TouchEvent) => {
-      touchX.current = e.touches[0].clientX;
-      touchY.current = e.touches[0].clientY;
-    };
-    const end = (e: TouchEvent) => {
-      if (status !== GameStatus.PLAYING) return;
-      const dx  = e.changedTouches[0].clientX - touchX.current;
-      const dy  = e.changedTouches[0].clientY - touchY.current;
-      const max = Math.floor(laneCount / 2);
-      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 25) {
-        if (dx > 0) setLane(l => Math.min(l + 1, max));
-        else        setLane(l => Math.max(l - 1, -max));
-      } else if (gamePhase === 1) {
-        // Phase 1 only: up/down swipe = jump/slide
-        if      (dy < -25 && Math.abs(dy) > Math.abs(dx)) doJump();
-        else if (dy >  25 && Math.abs(dy) > Math.abs(dx)) doSlide();
-        else if (Math.abs(dx) < 10 && Math.abs(dy) < 10)  activateImmortality();
-      }
-    };
-    window.addEventListener('touchstart', start, { passive: true });
-    window.addEventListener('touchend', end);
-    return () => {
-      window.removeEventListener('touchstart', start);
-      window.removeEventListener('touchend', end);
-    };
-  }, [status, laneCount, hasDoubleJump, activateImmortality, gamePhase]);
-
-  // Damage handler — routes to correct takeDamage depending on phase
-  useEffect(() => {
-    const hit = () => {
-      if (isInvincible.current || isImmortalityActive) return;
-      audio.playDamage();
-      if (gamePhase === 3) takeDamageSpace();
-      else                 takeDamage();
-      isInvincible.current = true;
-      lastHitTime.current  = Date.now();
-    };
-    window.addEventListener('player-hit', hit);
-    return () => window.removeEventListener('player-hit', hit);
-  }, [takeDamage, takeDamageSpace, isImmortalityActive, gamePhase]);
-
-  // Boost ramp launch (Phase 1 only)
-  useEffect(() => {
-    const launch = () => {
-      isJumping.current = true;
-      jumpsDone.current = 1;
-      velocityY.current = JUMP_FORCE * 1.4;
-      audio.playBoost();
-    };
-    window.addEventListener('boost-launch', launch);
-    return () => window.removeEventListener('boost-launch', launch);
+    let cancelled = false;
+    getLeaderboard()
+      .then(rows => { if (!cancelled) setEntries(rows); })
+      .catch(() => { if (!cancelled) setFailed(true); });
+    return () => { cancelled = true; };
   }, []);
 
-  useFrame((state, delta) => {
-    if (!groupRef.current) return;
-    if (status === GameStatus.PAUSED) return;
-    if (status !== GameStatus.PLAYING) return;
-    const dt = Math.min(delta, MAX_DELTA);
+  const rankStyle = (i: number) =>
+    i === 0 ? 'border-yellow-500 bg-yellow-900/20' :
+    i === 1 ? 'border-gray-400 bg-gray-700/30'   :
+    i === 2 ? 'border-orange-700 bg-orange-900/20' :
+              'border-gray-800 bg-gray-900/50';
 
-    // ── NEW: Phase 3 ship movement ───────────────────────────────────────────
-    if (gamePhase === 3) {
-      const spec        = AIRCRAFT_SPECS[shipModel];
-      const agilityMult = spec.enhancedAgility ? 1.5 : 1.0;
-      targetX.current   = lane * LANE_WIDTH;
-      groupRef.current.position.x = THREE.MathUtils.lerp(
-        groupRef.current.position.x, targetX.current, dt * 14 * agilityMult,
-      );
-      // Gentle hover bob
-      groupRef.current.position.y = Math.sin(state.clock.elapsedTime * 2.5) * 0.12;
-      // Bank into turns
-      const xDiff = targetX.current - groupRef.current.position.x;
-      groupRef.current.rotation.z = -xDiff * 0.15;
-      // Engine glow pulse via bodyRef
-      if (bodyRef.current) {
-        bodyRef.current.children.forEach((child, i) => {
-          if (child instanceof THREE.Mesh && i > 3) {
-            const mat = child.material as THREE.MeshBasicMaterial;
-            if (mat.transparent) mat.opacity = 0.5 + Math.sin(state.clock.elapsedTime * 8 + i) * 0.3;
-          }
-        });
-      }
-      // Invincibility flicker
-      if (isInvincible.current) {
-        if (Date.now() - lastHitTime.current > 1500) {
-          isInvincible.current = false; groupRef.current.visible = true;
-        } else {
-          groupRef.current.visible = Math.floor(Date.now() / 50) % 2 === 0;
-        }
-      } else {
-        groupRef.current.visible = true;
-      }
-      return;
-    }
+  return (
+    <div className="absolute inset-0 bg-black/95 z-[110] text-white pointer-events-auto flex flex-col items-center justify-center p-6">
+      <h2 className="text-3xl font-black text-yellow-400 mb-6 tracking-widest flex items-center gap-2">
+        <Crown className="w-7 h-7" /> LEADERBOARD
+      </h2>
+      <div className="w-full max-w-md space-y-2 mb-8 max-h-[55vh] overflow-y-auto">
+        {entries === null && !failed && (
+          <div className="flex items-center justify-center gap-2 text-gray-400 py-10">
+            <Loader2 className="w-5 h-5 animate-spin" /> Loading scores…
+          </div>
+        )}
+        {failed && (
+          <div className="text-red-400 text-center py-10 text-sm">Couldn't load the leaderboard. Check your connection and try again.</div>
+        )}
+        {entries && entries.length === 0 && (
+          <div className="text-gray-500 text-center py-10">No scores yet — be the first!</div>
+        )}
+        {entries && entries.map((e, i) => (
+          <div key={i} className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${rankStyle(i)}`}>
+            <span className="w-6 text-center font-black text-gray-400">{i + 1}</span>
+            <span className="flex-1 font-bold truncate">{e.name}</span>
+            <span className="font-mono font-bold text-cyan-400">{e.score.toLocaleString()}</span>
+          </div>
+        ))}
+      </div>
+      <button onClick={onClose} className="px-10 py-3 bg-white text-black font-black rounded-full hover:scale-105 transition-all">BACK</button>
+    </div>
+  );
+};
 
-    // ── Phase 1: original runner movement (unchanged) ────────────────────────
-    targetX.current = lane * LANE_WIDTH;
-    groupRef.current.position.x = THREE.MathUtils.lerp(
-      groupRef.current.position.x, targetX.current, dt * 15,
-    );
+// ─── Submit-score form (used on Game Over / Victory) ───────────────────────
+const ScoreSubmit: React.FC<{ score: number }> = ({ score }) => {
+  const [name, setName]   = useState(() => localStorage.getItem('gr_playername') || '');
+  const [state, setState] = useState<'idle' | 'submitting' | 'done' | 'error'>('idle');
+  const [msg, setMsg]     = useState('');
 
-    if (bodyRef.current) {
-      const targetScaleY = isSliding ? SLIDE_H : 1;
-      bodyRef.current.scale.y = THREE.MathUtils.lerp(bodyRef.current.scale.y, targetScaleY, dt * 12);
-    }
-
-    if (isJumping.current) {
-      groupRef.current.position.y += velocityY.current * dt;
-      velocityY.current -= GRAVITY * dt;
-      if (groupRef.current.position.y <= 0) {
-        groupRef.current.position.y = 0;
-        isJumping.current = false; jumpsDone.current = 0; velocityY.current = 0;
-        if (bodyRef.current) bodyRef.current.rotation.x = 0;
-      }
-      if (jumpsDone.current === 2 && bodyRef.current) {
-        spinRot.current = Math.max(-Math.PI * 2, spinRot.current - dt * 15);
-        bodyRef.current.rotation.x = spinRot.current;
-      }
-    }
-
-    const xDiff = targetX.current - groupRef.current.position.x;
-    groupRef.current.rotation.z = -xDiff * 0.2;
-
-    const t = state.clock.elapsedTime * 25;
-    if (!isJumping.current && !isSliding) {
-      if (lArmRef.current) lArmRef.current.rotation.x = Math.sin(t) * 0.7;
-      if (rArmRef.current) rArmRef.current.rotation.x = Math.sin(t + Math.PI) * 0.7;
-      if (lLegRef.current) lLegRef.current.rotation.x = Math.sin(t + Math.PI) * 1.0;
-      if (rLegRef.current) rLegRef.current.rotation.x = Math.sin(t) * 1.0;
-      if (bodyRef.current) bodyRef.current.position.y = 1.1 + Math.abs(Math.sin(t)) * 0.1;
-    }
-
-    if (shadowRef.current) {
-      const h = groupRef.current.position.y;
-      const s = Math.max(0.2, 1 - h / 5);
-      shadowRef.current.scale.set(s, s, s);
-      (shadowRef.current.material as THREE.MeshBasicMaterial).opacity = Math.max(0.1, 0.3 - h * 0.04);
-    }
-
-    if (shieldRef.current && shieldActive) {
-      const p = 1.2 + Math.sin(state.clock.elapsedTime * 4) * 0.05;
-      shieldRef.current.scale.set(p, p, p);
-      shieldRef.current.rotation.y += dt * 0.5;
-    }
-
-    if (isInvincible.current) {
-      if (Date.now() - lastHitTime.current > 1500) {
-        isInvincible.current = false; groupRef.current.visible = true;
-      } else {
-        groupRef.current.visible = Math.floor(Date.now() / 50) % 2 === 0;
-      }
+  const submit = async () => {
+    if (!name.trim() || state === 'submitting' || state === 'done') return;
+    setState('submitting');
+    const res = await saveHighScore(name, score);
+    if (res.ok === true) {
+      localStorage.setItem('gr_playername', name.trim().slice(0, 30));
+      setState('done');
     } else {
-      groupRef.current.visible = true;
+      setState('error');
+      setMsg(res.message);
     }
-  });
+  };
 
-  // ── NEW: Phase 3 — spacecraft render ──────────────────────────────────────
-  if (gamePhase === 3) {
-    const spec = AIRCRAFT_SPECS[shipModel];
+  if (state === 'done') {
     return (
-      <group ref={groupRef}>
-        <group ref={bodyRef}>
-          {/* Nose cone */}
-          <mesh position={[0, 0.95, 0]} geometry={SHIP_NOSE_GEO} material={shipMats.body} />
-          {/* Fuselage hull */}
-          <mesh position={[0, 0.05, 0]} rotation={[Math.PI, 0, 0]} geometry={SHIP_HULL_GEO} material={shipMats.body} />
-          {/* Hull accent stripe */}
-          <mesh position={[0, 0.05, 0]} rotation={[Math.PI, 0, 0]} scale={[0.55, 1.0, 0.55]} geometry={SHIP_HULL_GEO} material={shipMats.accent} />
-          {/* Cockpit canopy */}
-          <mesh position={[0, 0.55, 0.08]} rotation={[-0.3, 0, 0]} geometry={SHIP_CANOPY_GEO} material={shipMats.canopy} />
-          {/* Swept wings (angled, fighter-jet silhouette) */}
-          <mesh position={[-0.55, -0.15, 0.15]} rotation={[0, 0, 0.28]} geometry={SHIP_WING_GEO} material={shipMats.body} />
-          <mesh position={[ 0.55, -0.15, 0.15]} rotation={[0, 0, -0.28]} geometry={SHIP_WING_GEO} material={shipMats.body} />
-          <mesh position={[-0.55, -0.15, 0.15]} rotation={[0, 0, 0.28]} scale={[1.0, 2.2, 1.0]} geometry={SHIP_WING_GEO} material={shipMats.accent} />
-          <mesh position={[ 0.55, -0.15, 0.15]} rotation={[0, 0, -0.28]} scale={[1.0, 2.2, 1.0]} geometry={SHIP_WING_GEO} material={shipMats.accent} />
-          {/* Tail stabilizer fins */}
-          <mesh position={[-0.22, -0.35, 0.35]} geometry={SHIP_FIN_GEO} material={shipMats.body} />
-          <mesh position={[ 0.22, -0.35, 0.35]} geometry={SHIP_FIN_GEO} material={shipMats.body} />
-          {/* Engines */}
-          <mesh position={[-0.55, -0.3, 0.1]} geometry={SHIP_ENGINE_GEO} material={shipMats.engine} />
-          <mesh position={[ 0.55, -0.3, 0.1]} geometry={SHIP_ENGINE_GEO} material={shipMats.engine} />
-          {/* Engine glows */}
-          <mesh position={[-0.55, -0.6, 0.1]} geometry={SHIP_GLOW_GEO} material={shipMats.glow} />
-          <mesh position={[ 0.55, -0.6, 0.1]} geometry={SHIP_GLOW_GEO} material={shipMats.glow} />
-          {/* Thrust trails */}
-          <mesh position={[-0.55, -1.0, 0.1]} rotation={[Math.PI, 0, 0]} geometry={ROCKET_TRAIL_GEO} material={shipMats.trail} />
-          <mesh position={[ 0.55, -1.0, 0.1]} rotation={[Math.PI, 0, 0]} geometry={ROCKET_TRAIL_GEO} material={shipMats.trail} />
-          {/* Delta passive shield ring (visible until consumed) */}
-          {spec.shieldGenerator && !shipShieldConsumed && (
-            <mesh geometry={SHIELD_GEO} material={shipMats.shield} scale={[1.8, 1.8, 1.8]} />
-          )}
-          {/* Beta magnet hull indicator */}
-          {spec.magnetizedHull && (
-            <mesh position={[0, 0.9, 0]}>
-              <torusGeometry args={[0.6, 0.05, 6, 20]} />
-              <meshBasicMaterial color={spec.color} transparent opacity={0.6} />
-            </mesh>
-          )}
-          {/* Gamma double blaster barrels */}
-          {spec.doubleBlasters && (
-            <>
-              <mesh position={[-0.38, 0.85, -0.15]}>
-                <cylinderGeometry args={[0.05, 0.05, 0.5, 5]} />
-                <meshBasicMaterial color={spec.color} />
-              </mesh>
-              <mesh position={[ 0.38, 0.85, -0.15]}>
-                <cylinderGeometry args={[0.05, 0.05, 0.5, 5]} />
-                <meshBasicMaterial color={spec.color} />
-              </mesh>
-            </>
-          )}
-        </group>
-      </group>
+      <div className="flex items-center gap-2 text-green-400 font-bold text-sm mb-3">
+        <CheckCircle2 className="w-4 h-4" /> Submitted to the global leaderboard!
+      </div>
     );
   }
 
-  // ── Phase 1: human runner ───────────────────────────────────────────────────
   return (
-    <group ref={groupRef}>
-      <group ref={bodyRef} position={[0, 1.1, 0]}>
-        {/* Torso */}
-        <mesh castShadow position={[0, 0.2, 0]} geometry={TORSO_GEO} material={mats.shirt} />
-        {/* Backpack */}
-        <mesh position={[0, 0.22, -0.16]}>
-          <boxGeometry args={[0.22, 0.32, 0.14]} />
-          <meshStandardMaterial color={mats.pants.color} roughness={0.8} />
-        </mesh>
-        {/* Head */}
-        <mesh position={[0, 0.6, 0]} castShadow geometry={HEAD_GEO} material={mats.skin} />
-        {/* Right arm */}
-        <group position={[0.32, 0.4, 0]}><group ref={rArmRef}>
-          <mesh position={[0, -0.25, 0]} geometry={ARM_GEO} material={mats.skin} />
-          <mesh position={[0, -0.55, 0]} geometry={JOINT_GEO} material={mats.glow} />
-        </group></group>
-        {/* Left arm */}
-        <group position={[-0.32, 0.4, 0]}><group ref={lArmRef}>
-          <mesh position={[0, -0.25, 0]} geometry={ARM_GEO} material={mats.skin} />
-          <mesh position={[0, -0.55, 0]} geometry={JOINT_GEO} material={mats.glow} />
-        </group></group>
-        {/* Hips */}
-        <mesh position={[0, -0.15, 0]} geometry={HIPS_GEO} material={mats.pants} />
-        {/* Right leg */}
-        <group position={[0.12, -0.25, 0]}><group ref={rLegRef}>
-          <mesh position={[0, -0.35, 0]} geometry={LEG_GEO} material={mats.pants} />
-        </group></group>
-        {/* Left leg */}
-        <group position={[-0.12, -0.25, 0]}><group ref={lLegRef}>
-          <mesh position={[0, -0.35, 0]} geometry={LEG_GEO} material={mats.pants} />
-        </group></group>
-        {/* Shield bubble */}
-        {shieldActive && (
-          <mesh ref={shieldRef} position={[0, 0.2, 0]} geometry={SHIELD_GEO} material={mats.shield} />
-        )}
-        {/* Speed boost trail */}
-        {speedBoostActive && (
-          <mesh position={[0, 0.2, 0.5]} rotation={[Math.PI / 2, 0, 0]}>
-            <cylinderGeometry args={[0.5, 0.1, 2, 6]} />
-            <meshBasicMaterial color="#ffff00" transparent opacity={0.4} />
-          </mesh>
-        )}
-      </group>
-      {/* Floor shadow */}
-      <mesh
-        ref={shadowRef}
-        position={[0, 0.02, 0]}
-        rotation={[-Math.PI / 2, 0, 0]}
-        geometry={SHADOW_GEO}
-        material={mats.shadow}
-      />
-    </group>
+    <div className="w-full max-w-xs flex flex-col gap-1.5 mb-3">
+      <div className="flex gap-2">
+        <input
+          value={name}
+          maxLength={30}
+          onChange={e => setName(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') submit(); }}
+          placeholder="Your name"
+          className="flex-1 min-w-0 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-cyan-500"
+        />
+        <button
+          onClick={submit}
+          disabled={!name.trim() || state === 'submitting'}
+          className="flex items-center gap-1.5 px-4 py-2 bg-cyan-600 rounded-lg font-bold text-sm hover:bg-cyan-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+          {state === 'submitting' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+          Submit
+        </button>
+      </div>
+      {state === 'error' && <div className="text-red-400 text-xs">{msg}</div>}
+    </div>
   );
+};
+
+// ─── Shop screen ──────────────────────────────────────────────────────────────
+const ShopScreen: React.FC = () => {
+  const { score, buyItem, closeShop, hasDoubleJump, hasImmortality } = useStore();
+  const ITEMS = [
+    { id:'DOUBLE_JUMP', name:'DOUBLE JUMP',  desc:'Jump again mid-air',          cost:1000, icon:ArrowUpCircle, one:true  },
+    { id:'MAX_LIFE',    name:'MAX LIFE UP',  desc:'Adds a permanent heart slot', cost:1500, icon:Activity,      one:false },
+    { id:'HEAL',        name:'REPAIR KIT',   desc:'Restores 1 life immediately', cost:800,  icon:PlusCircle,    one:false },
+    { id:'IMMORTAL',    name:'IMMORTALITY',  desc:'5s invincibility on demand',  cost:3000, icon:Shield,        one:true  },
+  ].filter(i => !(i.id==='DOUBLE_JUMP'&&hasDoubleJump) && !(i.id==='IMMORTAL'&&hasImmortality))
+   .sort(()=>Math.random()-.5).slice(0,3);
+
+  return (
+    <div className="absolute inset-0 bg-black/90 z-[100] text-white pointer-events-auto backdrop-blur-md flex flex-col items-center justify-center p-6">
+      <div className="flex items-center justify-between w-full max-w-2xl mb-2">
+        <h2 className="text-3xl font-black text-cyan-400 tracking-widest">CYBER SHOP</h2>
+        <MuteBtn />
+      </div>
+      <div className="flex items-center text-yellow-400 mb-6">
+        <span className="mr-2">CREDITS:</span>
+        <span className="text-2xl font-bold">{score.toLocaleString()}</span>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl w-full mb-8">
+        {ITEMS.map(item => {
+          const Icon = item.icon;
+          const can  = score >= item.cost;
+          return (
+            <div key={item.id} className="bg-gray-900 border border-gray-700 p-5 rounded-xl flex flex-col items-center text-center hover:border-cyan-500 transition-colors">
+              <div className="bg-gray-800 p-3 rounded-full mb-3"><Icon className="w-7 h-7 text-cyan-400" /></div>
+              <h3 className="font-bold text-lg mb-1">{item.name}</h3>
+              <p className="text-gray-400 text-xs mb-4 h-8 flex items-center">{item.desc}</p>
+              <button onClick={() => buyItem(item.id as any, item.cost)} disabled={!can}
+                className={`px-5 py-2 rounded font-bold w-full text-sm ${can ? 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:brightness-110' : 'bg-gray-700 opacity-50 cursor-not-allowed'}`}>
+                {item.cost} GEMS
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      <button onClick={closeShop}
+        className="flex items-center px-8 py-3 bg-gradient-to-r from-purple-600 to-pink-600 font-bold text-lg rounded hover:scale-105 transition-all">
+        RESUME <Play className="ml-2 w-5 h-5" fill="white" />
+      </button>
+    </div>
+  );
+};
+
+// ─── Pause screen ─────────────────────────────────────────────────────────────
+const PauseScreen: React.FC = () => {
+  const { resumeGame, restartGame, setStatus } = useStore();
+  return (
+    <div className="absolute inset-0 bg-black/85 z-[200] text-white pointer-events-auto backdrop-blur-md flex flex-col items-center justify-center p-8">
+      <div className="absolute top-4 right-4"><MuteBtn /></div>
+      <h2 className="text-5xl font-black text-cyan-400 mb-10 tracking-widest">PAUSED</h2>
+      <div className="flex flex-col gap-4 w-full max-w-xs">
+        <button onClick={resumeGame} className="w-full py-4 bg-gradient-to-r from-cyan-600 to-blue-600 font-black text-xl rounded-xl hover:scale-105 transition-all flex items-center justify-center">
+          <Play className="mr-3 fill-white" /> RESUME
+        </button>
+        <button onClick={restartGame} className="w-full py-3 bg-white/10 border border-white/20 font-bold rounded-xl hover:bg-white/20">RESTART</button>
+        <button onClick={() => setStatus(GameStatus.MENU)} className="text-gray-400 hover:text-white text-sm tracking-widest">[ MAIN MENU ]</button>
+      </div>
+    </div>
+  );
+};
+
+// ─── Skin shop ────────────────────────────────────────────────────────────────
+const SkinShop: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const { totalGems, currentSkin, unlockedSkins, setSkin, unlockSkin } = useStore();
+  const SKINS = [
+    { type:SkinType.DEFAULT,   name:'CLASSIC NEON', cost:0,    color:'#00aaff' },
+    { type:SkinType.NEON_BLUE, name:'DEEP BLUE',    cost:500,  color:'#0066ff' },
+    { type:SkinType.NEON_GOLD, name:'CYBER GOLD',   cost:1000, color:'#ffaa00' },
+    { type:SkinType.PHANTOM,   name:'PHANTOM',      cost:2000, color:'#ff00ff' },
+  ];
+  return (
+    <div className="absolute inset-0 bg-black/95 z-[110] text-white pointer-events-auto flex flex-col items-center justify-center p-6">
+      <h2 className="text-3xl font-black text-pink-500 mb-4 tracking-widest">SKIN PROTOCOLS</h2>
+      <div className="flex items-center text-cyan-400 mb-6"><Diamond className="mr-2" /><span className="text-xl font-bold">{totalGems}</span></div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 w-full max-w-xl mb-8">
+        {SKINS.map(s => {
+          const unlocked = unlockedSkins.includes(s.type);
+          const selected = currentSkin === s.type;
+          return (
+            <div key={s.type} className={`p-4 rounded-xl border-2 flex flex-col items-center ${selected ? 'border-white bg-white/10' : 'border-gray-800 bg-gray-900'}`}>
+              <div className="w-12 h-12 rounded-full mb-3" style={{ background: s.color }} />
+              <div className="font-bold text-sm text-center mb-3">{s.name}</div>
+              {unlocked
+                ? <button onClick={() => setSkin(s.type)} className={`w-full py-1 rounded font-bold text-sm ${selected ? 'bg-white text-black' : 'bg-gray-700'}`}>{selected?'ACTIVE':'SELECT'}</button>
+                : <button onClick={() => unlockSkin(s.type, s.cost)} disabled={totalGems < s.cost}
+                    className={`w-full py-1 rounded font-bold text-sm ${totalGems >= s.cost ? 'bg-pink-600' : 'bg-gray-800 text-gray-500'}`}>{s.cost} GEMS</button>}
+            </div>
+          );
+        })}
+      </div>
+      <button onClick={onClose} className="px-10 py-3 bg-white text-black font-black rounded-full hover:scale-105 transition-all">BACK</button>
+    </div>
+  );
+};
+
+// ─── MENU ─────────────────────────────────────────────────────────────────────
+const MenuScreen: React.FC = () => {
+  const { startGame, highScore, playerLevel, totalGems } = useStore();
+  const [showSkins, setShowSkins] = useState(false);
+  const [showAch,   setShowAch  ] = useState(false);
+  const [showMiss,  setShowMiss ] = useState(false);
+  const [showLB,    setShowLB   ] = useState(false);
+
+  return (
+    <div className="absolute inset-0 flex items-center justify-center z-[100] bg-black/80 backdrop-blur-sm pointer-events-auto">
+      <div className="w-full max-w-sm rounded-3xl overflow-hidden border border-white/10 shadow-[0_0_50px_rgba(0,255,255,0.15)]">
+        <div className="bg-gradient-to-b from-purple-900/60 to-black p-8 flex flex-col items-center">
+          <Rocket className="text-cyan-400 w-16 h-16 mb-3 animate-bounce" />
+          <h1 className="text-4xl font-black text-white tracking-widest mb-1">GEMINI RUN</h1>
+          <p className="text-cyan-400 font-mono text-sm tracking-widest mb-2">BEAT THE UNIVERSE</p>
+
+          <div className="flex gap-4 text-sm mb-6">
+            <span className="text-yellow-400 flex items-center gap-1"><Trophy className="w-4 h-4" />{highScore.toLocaleString()}</span>
+            <span className="text-cyan-400 flex items-center gap-1"><Star className="w-4 h-4" />Lv.{playerLevel}</span>
+            <span className="text-pink-400 flex items-center gap-1"><Diamond className="w-4 h-4" />{totalGems}</span>
+          </div>
+
+          <button onClick={() => { audio.init(); startGame(); }}
+            className="w-full py-4 bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-black text-xl rounded-xl hover:brightness-110 transition-all mb-4 shadow-[0_0_20px_rgba(0,255,255,0.3)]">
+            INITIALIZE RUN ▶
+          </button>
+
+          <div className="flex gap-3 mt-2">
+            <button onClick={() => setShowSkins(true)} className="p-2 bg-white/5 border border-white/10 rounded-full hover:bg-white/10 transition-all"><Palette className="text-pink-500 w-5 h-5" /></button>
+            <button onClick={() => setShowAch(true)}   className="p-2 bg-white/5 border border-white/10 rounded-full hover:bg-white/10 transition-all"><Award className="text-yellow-500 w-5 h-5" /></button>
+            <button onClick={() => setShowMiss(true)}  className="p-2 bg-white/5 border border-white/10 rounded-full hover:bg-white/10 transition-all"><Target className="text-cyan-500 w-5 h-5" /></button>
+            <button onClick={() => setShowLB(true)}    className="p-2 bg-white/5 border border-white/10 rounded-full hover:bg-white/10 transition-all"><Crown className="text-yellow-400 w-5 h-5" /></button>
+            <MuteBtn />
+          </div>
+
+          <p className="text-gray-600 text-[10px] font-mono mt-4 tracking-wider text-center">ARROWS/SWIPE · ↓ SLIDE · ↑ JUMP · SPACE IMMORTAL</p>
+        </div>
+      </div>
+      {showSkins && <SkinShop onClose={() => setShowSkins(false)} />}
+      {showAch   && <AchievementsPanel onClose={() => setShowAch(false)} />}
+      {showMiss  && <MissionsPanel onClose={() => setShowMiss(false)} />}
+      {showLB    && <LeaderboardPanel onClose={() => setShowLB(false)} />}
+    </div>
+  );
+};
+
+// ─── Game Over ────────────────────────────────────────────────────────────────
+const GameOverScreen: React.FC = () => {
+  const { score, highScore, restartGame, gemsCollected, distance, level, achievements, newAchievements, dismissAchievements, xp, playerLevel } = useStore();
+  const [showAch, setShowAch] = useState(false);
+  const [showLB,  setShowLB ] = useState(false);
+  const newUnlocked = achievements.filter(a => newAchievements.includes(a.id));
+
+  return (
+    <div className="absolute inset-0 bg-black/90 z-[100] text-white pointer-events-auto flex flex-col items-center justify-center p-6">
+      <h1 className="text-5xl font-black mb-2 text-red-400 drop-shadow-[0_0_10px_rgba(255,0,0,0.6)]">GAME OVER</h1>
+      {newUnlocked.length > 0 && (
+        <div className="mb-4 cursor-pointer" onClick={() => setShowAch(true)}>
+          <div className="flex items-center gap-2 bg-yellow-900/80 border border-yellow-500 px-4 py-2 rounded-xl">
+            <span className="text-lg">{newUnlocked[0].icon}</span>
+            <span className="text-yellow-300 font-bold text-sm">{newUnlocked.length} Achievement{newUnlocked.length>1?'s':''} Unlocked! →</span>
+          </div>
+        </div>
+      )}
+      <div className="grid grid-cols-2 gap-3 w-full max-w-xs mb-6 mt-2">
+        {[
+          { label:'SCORE',    val: score.toLocaleString(),       color:'text-yellow-400' },
+          { label:'BEST',     val: highScore.toLocaleString(),   color:'text-cyan-400'   },
+          { label:'LEVEL',    val: `${level}/${5}`,              color:'text-purple-400' },
+          { label:'GEMS',     val: gemsCollected,                color:'text-pink-400'   },
+          { label:'DISTANCE', val: `${Math.floor(distance)} LY`, color:'text-green-400'  },
+          { label:'XP',       val: `+${Math.floor(score/10)}`,   color:'text-orange-400' },
+        ].map(s => (
+          <div key={s.label} className="bg-gray-900 border border-gray-700 p-3 rounded-lg text-center">
+            <div className="text-gray-500 text-xs mb-1">{s.label}</div>
+            <div className={`text-xl font-bold font-mono ${s.color}`}>{s.val}</div>
+          </div>
+        ))}
+      </div>
+      <ScoreSubmit score={score} />
+      <button onClick={() => { audio.init(); restartGame(); }}
+        className="px-10 py-4 bg-gradient-to-r from-cyan-500 to-blue-600 font-black text-xl rounded-xl hover:scale-105 transition-all shadow-[0_0_20px_rgba(0,255,255,0.3)] mb-3">
+        RUN AGAIN ▶
+      </button>
+      <button onClick={() => setShowLB(true)} className="flex items-center gap-1.5 text-gray-400 hover:text-yellow-400 text-sm font-bold transition-colors">
+        <Crown className="w-4 h-4" /> View Leaderboard
+      </button>
+      {showAch && <AchievementsPanel onClose={() => { setShowAch(false); dismissAchievements(); }} />}
+      {showLB  && <LeaderboardPanel onClose={() => setShowLB(false)} />}
+    </div>
+  );
+};
+
+// ─── Victory ──────────────────────────────────────────────────────────────────
+const VictoryScreen: React.FC = () => {
+  const { score, restartGame, gemsCollected, distance } = useStore();
+  const [showLB, setShowLB] = useState(false);
+  return (
+    <div className="absolute inset-0 bg-black/95 z-[100] text-white pointer-events-auto flex flex-col items-center justify-center p-6">
+      <Rocket className="w-20 h-20 text-yellow-400 mb-4 animate-bounce drop-shadow-[0_0_20px_gold]" />
+      <h1 className="text-4xl sm:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-orange-500 to-pink-500 mb-2 text-center">MISSION COMPLETE</h1>
+      <p className="text-cyan-300 font-mono tracking-widest mb-6 text-center">THE COSMOS HAS BEEN CONQUERED</p>
+      <div className="grid grid-cols-3 gap-3 mb-6 w-full max-w-xs">
+        <div className="bg-black/60 border border-yellow-500/30 rounded-xl p-3 text-center">
+          <div className="text-xs text-gray-400">SCORE</div><div className="text-xl font-bold text-yellow-400">{score.toLocaleString()}</div>
+        </div>
+        <div className="bg-black/60 border border-cyan-500/30 rounded-xl p-3 text-center">
+          <div className="text-xs text-gray-400">GEMS</div><div className="text-xl font-bold text-cyan-400">{gemsCollected}</div>
+        </div>
+        <div className="bg-black/60 border border-purple-500/30 rounded-xl p-3 text-center">
+          <div className="text-xs text-gray-400">DIST</div><div className="text-xl font-bold text-purple-400">{Math.floor(distance)}</div>
+        </div>
+      </div>
+      <ScoreSubmit score={score} />
+      <button onClick={() => { audio.init(); restartGame(); }}
+        className="px-10 py-4 bg-white text-black font-black text-xl rounded-xl hover:scale-105 transition-all shadow-[0_0_40px_rgba(255,255,255,0.2)] mb-3">
+        PLAY AGAIN ▶
+      </button>
+      <button onClick={() => setShowLB(true)} className="flex items-center gap-1.5 text-gray-400 hover:text-yellow-400 text-sm font-bold transition-colors">
+        <Crown className="w-4 h-4" /> View Leaderboard
+      </button>
+      {showLB && <LeaderboardPanel onClose={() => setShowLB(false)} />}
+    </div>
+  );
+};
+
+// ─── Main HUD (playing) ───────────────────────────────────────────────────────
+const PLAQUE = {
+  background: 'linear-gradient(180deg, #f0cf6e 0%, #c99a3a 45%, #8a6420 100%)',
+  border: '2px solid #4a3208',
+  boxShadow: 'inset 0 2px 2px rgba(255,255,255,0.5), inset 0 -3px 5px rgba(0,0,0,0.35), 0 3px 6px rgba(0,0,0,0.5)',
+  color: '#3a2205',
+};
+const STONE_TILE = {
+  background: 'linear-gradient(180deg, #6b6258 0%, #3f382f 100%)',
+  border: '2px solid #241f18',
+  boxShadow: 'inset 0 2px 2px rgba(255,255,255,0.2), inset 0 -2px 4px rgba(0,0,0,0.5)',
+};
+
+const PlayingHUD: React.FC = () => {
+  const {
+    score, lives, maxLives, collectedLetters, level,
+    gemsCollected, distance, isImmortalityActive, speed,
+    shieldActive, magnetActive, speedBoostActive, isSliding,
+    comboMultiplier, pauseGame,
+  } = useStore();
+
+  const TARGET = ['G','E','M','I','N','I'];
+  const biome  = BIOME_BY_LEVEL[level] ?? BiomeType.JUNGLE_RUINS;
+  const cols   = BIOME_COLORS[biome];
+
+  return (
+    <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-3 sm:p-6 z-50">
+      {/* Top bar */}
+      <div className="flex justify-between items-start">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={pauseGame} className="w-10 h-10 rounded-full flex items-center justify-center pointer-events-auto" style={PLAQUE}>
+            <Pause className="w-5 h-5" style={{ color: PLAQUE.color }} />
+          </button>
+          <MuteBtn />
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-cyber font-black text-lg sm:text-2xl" style={PLAQUE}>
+            <Diamond className="w-4 h-4 sm:w-5 sm:h-5 fill-current" />
+            {score.toLocaleString()}
+          </div>
+          {comboMultiplier >= 2 && (
+            <div className={`px-2 py-0.5 rounded font-black text-sm ${comboMultiplier>=8?'bg-red-600':comboMultiplier>=5?'bg-orange-600':'bg-yellow-600'} text-white animate-pulse`}>
+              ×{comboMultiplier}
+            </div>
+          )}
+        </div>
+        <div className="flex gap-1 flex-wrap justify-end">
+          {Array.from({length:maxLives}).map((_,i)=>(
+            <Heart key={i} className={`w-6 h-6 ${i<lives?'text-pink-500 fill-pink-500':'text-gray-800 fill-gray-800'}`} />
+          ))}
+        </div>
+      </div>
+
+      {/* Level badge */}
+      <div className="absolute top-4 left-1/2 -translate-x-1/2">
+        <div className="px-4 py-1.5 rounded-lg font-cyber text-xs font-bold tracking-widest" style={PLAQUE}>
+          LEVEL {level} / {5} — {biome.replace('_',' ')}
+        </div>
+      </div>
+
+      {/* Power-up indicators */}
+      <div className="absolute top-16 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1">
+        {isImmortalityActive && <div className="text-yellow-400 font-black text-xl animate-pulse flex items-center gap-1"><Shield className="w-5 h-5 fill-yellow-400"/>IMMORTAL</div>}
+        {shieldActive        && <div className="text-cyan-400 font-bold text-base flex items-center gap-1"><Shield className="w-4 h-4"/>SHIELD</div>}
+        {magnetActive        && <div className="text-pink-400 font-bold text-base animate-bounce">⚡ MAGNET</div>}
+        {speedBoostActive    && <div className="text-yellow-400 font-bold text-base italic">🚀 BOOST</div>}
+        {isSliding           && <div className="text-green-400 font-bold text-base">▼ SLIDING</div>}
+      </div>
+
+      {/* Letter bar — carved stone tiles, gold when collected */}
+      <div className="absolute top-14 left-1/2 -translate-x-1/2 flex gap-1.5 sm:gap-2">
+        {TARGET.map((ch,idx)=>{
+          const got = collectedLetters.includes(idx);
+          return (
+            <div key={idx}
+              style={got ? { ...PLAQUE, boxShadow: `${PLAQUE.boxShadow}, 0 0 10px ${GEMINI_COLORS[idx]}` } : STONE_TILE}
+              className="w-7 h-9 sm:w-9 sm:h-11 flex items-center justify-center font-black text-sm sm:text-lg font-cyber rounded-lg transition-all"
+            >
+              <span style={{ color: got ? PLAQUE.color : '#9a9084' }}>{ch}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Bottom: XP + speed + distance */}
+      <div className="flex justify-between items-end flex-wrap gap-2">
+        <XPBar />
+        <div className="flex gap-3 text-gray-500 text-xs font-mono">
+          <span><MapPin className="inline w-3 h-3 mr-1" />{Math.floor(distance)} LY</span>
+          <span><Zap className="inline w-3 h-3 mr-1" />{Math.round((speed/RUN_SPEED_BASE)*100)}%</span>
+          <span><Diamond className="inline w-3 h-3 mr-1" />{gemsCollected}</span>
+        </div>
+      </div>
+
+      {/* Achievement toasts */}
+      <AchievementToast />
+    </div>
+  );
+};
+
+// ─── Root HUD switch ──────────────────────────────────────────────────────────
+
+// ── Aircraft Shop Screen (shown after Level 5 complete) ───────────────────────
+const AircraftShopScreen: React.FC = () => {
+  const { score, selectedAircraft, selectAircraft, confirmAircraftAndEnterSpace } = useStore();
+
+  const models = [AircraftModel.ALPHA, AircraftModel.BETA, AircraftModel.GAMMA, AircraftModel.DELTA];
+
+  const handleConfirm = () => {
+    confirmAircraftAndEnterSpace();
+  };
+
+  return (
+    <div className="absolute inset-0 bg-black z-[200] text-white flex flex-col items-center justify-center p-4 pointer-events-auto overflow-y-auto"
+      style={{ background: 'radial-gradient(ellipse at 50% 20%, #0a0030 0%, #000008 70%)' }}>
+      {/* Stars */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        {Array.from({ length: 50 }).map((_, i) => (
+          <div key={i} className="absolute rounded-full bg-white"
+            style={{ width: `${1 + Math.random() * 2}px`, height: `${1 + Math.random() * 2}px`, left: `${Math.random() * 100}%`, top: `${Math.random() * 100}%`, opacity: 0.2 + Math.random() * 0.6 }} />
+        ))}
+      </div>
+
+      <div className="relative z-10 w-full max-w-lg">
+        <div className="text-center mb-4">
+          <div className="text-xs text-green-400 font-mono tracking-widest mb-1 animate-pulse">✅ LEVEL 5 COMPLETE — RUNNER PHASE CLEARED</div>
+          <h1 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400">
+            CHOOSE YOUR SPACECRAFT
+          </h1>
+          <p className="text-gray-400 text-xs mt-1">Entering Space Assault — Levels 6 to 10</p>
+          <div className="text-yellow-400 font-bold mt-1">CREDITS: {score.toLocaleString()}</div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          {models.map(model => {
+            const spec = AIRCRAFT_SPECS[model];
+            const isSelected = selectedAircraft === model;
+            const canAfford = model === AircraftModel.ALPHA || score >= spec.cost;
+            return (
+              <div key={model}
+                onClick={() => canAfford && selectAircraft(model)}
+                className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${isSelected ? 'border-cyan-400 bg-cyan-900/20 shadow-[0_0_20px_rgba(0,255,255,0.3)]' : canAfford ? 'border-gray-700 bg-gray-900/50 hover:border-gray-500' : 'border-gray-800 bg-gray-900/20 opacity-40 cursor-not-allowed'}`}>
+                {/* Aircraft visual */}
+                <div className="w-16 h-16 mx-auto mb-2 flex items-center justify-center">
+                  <svg viewBox="0 0 60 70" className="w-full h-full">
+                    <polygon points="30,5 12,45 24,38 30,55 36,38 48,45" fill={spec.color} />
+                    <polygon points="30,10 26,36 30,42 34,36" fill="white" opacity="0.6" />
+                    <rect x="14" y="44" width="8" height="10" fill="#ff6600" rx="2" />
+                    <rect x="38" y="44" width="8" height="10" fill="#ff6600" rx="2" />
+                  </svg>
+                </div>
+                <div className="text-center">
+                  <div className="font-black text-sm" style={{ color: spec.color }}>{spec.name}</div>
+                  <div className="text-xs text-gray-400 mt-1">{spec.feature}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">{spec.description}</div>
+                  <div className="mt-2 text-xs">
+                    {model === AircraftModel.ALPHA
+                      ? <span className="text-green-400 font-bold">FREE</span>
+                      : <span className={canAfford ? 'text-yellow-400 font-bold' : 'text-red-400 font-bold'}>{spec.cost} PTS</span>}
+                  </div>
+                  <div className="mt-1 text-[10px] text-purple-400">🚀 {ROCKETS_PER_LEVEL} Rockets</div>
+                </div>
+                {isSelected && <div className="text-center text-[10px] text-cyan-400 mt-1 font-bold">✓ SELECTED</div>}
+              </div>
+            );
+          })}
+        </div>
+
+        <button
+          onClick={handleConfirm}
+          disabled={!selectedAircraft}
+          className="w-full py-4 bg-gradient-to-r from-cyan-600 via-purple-600 to-pink-600 text-white font-black text-xl rounded-2xl hover:brightness-110 transition-all shadow-[0_0_30px_rgba(0,255,255,0.4)] disabled:opacity-50 disabled:cursor-not-allowed pointer-events-auto">
+          LAUNCH INTO SPACE →
+        </button>
+        <p className="text-center text-gray-600 text-xs mt-2 font-mono">MOVE: Touch/Mouse · AUTO-FIRE · 3 ROCKETS per level</p>
+      </div>
+    </div>
+  );
+};
+
+// ── Space Transition Warp Screen ───────────────────────────────────────────────
+const SpaceTransitionScreen: React.FC = () => (
+  <div className="absolute inset-0 z-[300] bg-black flex items-center justify-center pointer-events-none"
+    style={{ background: 'radial-gradient(ellipse at 50% 50%, #000033 0%, #000000 100%)' }}>
+    <div className="text-center animate-pulse">
+      <div className="text-6xl mb-4">🚀</div>
+      <div className="text-white font-black text-2xl tracking-widest mb-2">ENTERING DEEP SPACE</div>
+      <div className="text-cyan-400 font-mono text-sm">INITIALIZING SPACE ASSAULT...</div>
+      <div className="flex justify-center mt-4 gap-2">
+        {[0,1,2].map(i => <div key={i} className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: `${i * 0.2}s` }} />)}
+      </div>
+    </div>
+  </div>
+);
+
+// ── Space Shooter HUD (levels 6-10) ────────────────────────────────────────
+const SpaceShooterHUD: React.FC = () => {
+  const { score, lives, maxLives, level, gemsCollected, rocketsRemaining,
+          comboMultiplier, pauseGame, selectedAircraft, spaceGemsCollected, spaceKills } = useStore();
+  const spec = selectedAircraft ? AIRCRAFT_SPECS[selectedAircraft] : AIRCRAFT_SPECS[AircraftModel.ALPHA];
+  const d = level - 5;
+  const gemsNeeded = d * SPACE_GEM_TARGET_BASE + SPACE_GEM_TARGET_BASE;
+
+  const handleRocket = () => {
+    window.dispatchEvent(new Event('fire-rocket-ui'));
+  };
+
+  return (
+    <div className="absolute inset-0 pointer-events-none z-50" style={{ color: spec.color }}>
+      {/* Cockpit corner frame */}
+      <div className="absolute top-3 left-3 w-8 h-8 border-t-2 border-l-2 opacity-60" style={{ borderColor: spec.color }} />
+      <div className="absolute top-3 right-3 w-8 h-8 border-t-2 border-r-2 opacity-60" style={{ borderColor: spec.color }} />
+      <div className="absolute bottom-3 left-3 w-8 h-8 border-b-2 border-l-2 opacity-60" style={{ borderColor: spec.color }} />
+      <div className="absolute bottom-3 right-3 w-8 h-8 border-b-2 border-r-2 opacity-60" style={{ borderColor: spec.color }} />
+
+      {/* Center targeting reticle */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 opacity-50">
+        <div className="absolute inset-0 rounded-full border" style={{ borderColor: spec.color }} />
+        <div className="absolute top-1/2 left-0 w-3 h-0.5" style={{ background: spec.color, transform: 'translateY(-50%)' }} />
+        <div className="absolute top-1/2 right-0 w-3 h-0.5" style={{ background: spec.color, transform: 'translateY(-50%)' }} />
+        <div className="absolute left-1/2 top-0 h-3 w-0.5" style={{ background: spec.color, transform: 'translateX(-50%)' }} />
+        <div className="absolute left-1/2 bottom-0 h-3 w-0.5" style={{ background: spec.color, transform: 'translateX(-50%)' }} />
+      </div>
+
+      {/* Top bar */}
+      <div className="flex justify-between items-start p-3">
+        <div className="flex items-center gap-2">
+          <button onClick={pauseGame} className="p-2 bg-black/60 border border-white/10 rounded-lg hover:bg-white/10 pointer-events-auto">
+            <Pause className="text-white w-5 h-5"/>
+          </button>
+          <MuteBtn/>
+          <div className="text-2xl sm:text-3xl font-bold font-mono drop-shadow-[0_0_8px_currentColor]">{score.toLocaleString()}</div>
+          {comboMultiplier >= 2 && (
+            <div className="px-2 py-0.5 bg-red-600 rounded font-black text-sm text-white animate-pulse">×{comboMultiplier}</div>
+          )}
+        </div>
+        {/* Hull integrity bar */}
+        <div className="flex flex-col items-end gap-1">
+          <div className="flex items-center gap-1.5">
+            <Shield className="w-3.5 h-3.5" />
+            <span className="text-[10px] font-mono tracking-wider opacity-80">HULL</span>
+          </div>
+          <div className="flex items-center gap-1">
+            {Array.from({ length: maxLives }).map((_, i) => (
+              <div key={i} className="w-4 h-2.5 rounded-sm border" style={{
+                background: i < lives ? spec.color : 'transparent',
+                borderColor: i < lives ? spec.color : '#444'
+              }}/>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Level badge + kill count + gem progress */}
+      <div className="absolute top-16 left-1/2 -translate-x-1/2 text-center flex flex-col items-center gap-1.5">
+        <div className="bg-black/70 px-3 py-1 rounded-full border text-xs font-bold font-mono tracking-wider"
+          style={{ borderColor: spec.color, color: spec.color }}>
+          SPACE ASSAULT · LEVEL {level}/10
+        </div>
+        <div className="flex items-center gap-3 bg-black/50 px-3 py-1 rounded-full border border-white/10">
+          <div className="flex items-center gap-1">
+            <Crosshair className="w-3 h-3 text-red-400" />
+            <span className="text-[11px] font-mono font-bold text-red-300">{spaceKills}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-24 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+              <div className="h-full rounded-full transition-all" style={{
+                width: `${Math.min(100, (spaceGemsCollected / gemsNeeded) * 100)}%`,
+                background: `linear-gradient(90deg,${spec.color},#ff00ff)`
+              }}/>
+            </div>
+            <span className="text-[10px] font-mono text-gray-400">{spaceGemsCollected}/{gemsNeeded}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom: rocket button + ship name + gems */}
+      <div className="absolute bottom-0 left-0 right-0 flex items-end justify-between px-4 pb-5">
+        {/* Ship info */}
+        <div className="flex flex-col gap-1">
+          <div className="text-xs font-bold" style={{ color: spec.color }}>{spec.name}</div>
+          <div className="text-xs text-gray-500 font-mono">💎 {gemsCollected}</div>
+          <XPBar/>
+        </div>
+
+        {/* ROCKET button — large, on right */}
+        <button
+          onClick={handleRocket}
+          disabled={rocketsRemaining <= 0}
+          className="flex flex-col items-center gap-1 px-5 py-3 rounded-2xl border-2 font-black text-sm transition-all active:scale-95 pointer-events-auto"
+          style={{
+            borderColor: rocketsRemaining > 0 ? '#ff6600' : '#333',
+            background:  rocketsRemaining > 0 ? 'rgba(255,100,0,0.18)' : 'rgba(40,40,40,0.4)',
+            color:       rocketsRemaining > 0 ? '#ff8800' : '#555',
+            boxShadow:   rocketsRemaining > 0 ? '0 0 18px rgba(255,100,0,0.5)' : 'none',
+          }}>
+          <Rocket className="w-7 h-7"/>
+          <span>ROCKET</span>
+          <div className="flex gap-1">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="w-2.5 h-2.5 rounded-full border"
+                style={{ background: i < rocketsRemaining ? '#ff6600' : 'transparent', borderColor: i < rocketsRemaining ? '#ff6600' : '#444' }}/>
+            ))}
+          </div>
+        </button>
+      </div>
+
+      {/* Power-up indicators */}
+      <div className="absolute top-24 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1 pointer-events-none">
+        {useStore.getState().shieldActive && <div className="text-cyan-400 font-bold text-sm animate-pulse">🛡 SHIELD</div>}
+        {useStore.getState().magnetActive  && <div className="text-pink-400 font-bold text-sm">⚡ MAGNET</div>}
+      </div>
+
+      <AchievementToast/>
+    </div>
+  );
+};
+
+export const HUD: React.FC = () => {
+  const { status, gamePhase } = useStore();
+  if (status === GameStatus.SHOP)             return <ShopScreen />;
+  if (status === GameStatus.PAUSED)           return <PauseScreen />;
+  if (status === GameStatus.MENU)             return <MenuScreen />;
+  if (status === GameStatus.GAME_OVER)        return <GameOverScreen />;
+  if (status === GameStatus.VICTORY)          return <VictoryScreen />;
+  if ((status as string) === 'AIRCRAFT_SHOP') return <AircraftShopScreen />;
+  if ((status as string) === 'SPACE_TRANSITION') return <SpaceTransitionScreen />;
+  if (status === GameStatus.PLAYING && gamePhase === 3) return <SpaceShooterHUD />;
+  return <PlayingHUD />;
 };
