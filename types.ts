@@ -229,5 +229,5 @@ export const GEM_MAGNET_RADIUS      = 12;
 // the procedural version automatically — it will never crash the game.
 export const ASSET_CONFIG = {
   useRealGroundTextures: true,
-  useRealCharacterModel: true,
+  useRealCharacterModel: false, // temporarily off — see note in chat
 };
