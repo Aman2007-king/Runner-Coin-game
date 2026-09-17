@@ -4,6 +4,7 @@
 import React, { useRef, useEffect, useMemo, Suspense } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF, useAnimations } from '@react-three/drei';
+import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import * as THREE from 'three';
 import { useStore } from '../../store';
 import { LANE_WIDTH, GameStatus, SkinType, AircraftModel, AIRCRAFT_SPECS, ASSET_CONFIG } from '../../types';
@@ -44,6 +45,17 @@ const RUN_CLIP_NAMES = ['Run', 'Running', 'run', 'running', 'RunCycle', 'Armatur
 const RealCharacterModel: React.FC = () => {
   const group = useRef<THREE.Group>(null);
   const { scene, animations } = useGLTF('/models/runner.glb');
+  // Skinned/rigged models must be cloned per-instance (SkeletonUtils, not a
+  // plain .clone()) — the object useGLTF returns is a shared, cached
+  // singleton, and reusing it directly is a well-known cause of a rigged
+  // model silently failing to render (broken bone bindings, stale
+  // visibility/matrix state left over from a previous mount).
+  const clonedScene = useMemo(() => {
+    const c = cloneSkeleton(scene) as THREE.Group;
+    c.visible = true;
+    c.traverse(obj => { obj.visible = true; obj.frustumCulled = false; });
+    return c;
+  }, [scene]);
   const { actions } = useAnimations(animations, group);
 
   useEffect(() => {
@@ -53,7 +65,7 @@ const RealCharacterModel: React.FC = () => {
     return () => { action?.stop(); };
   }, [actions]);
 
-  return <primitive ref={group} object={scene} scale={0.01} position={[0, -1.1, 0]} />;
+  return <primitive ref={group} object={clonedScene} scale={0.01} position={[0, -1.1, 0]} />;
 };
 
 // ── NEW: Spacecraft geometries ─────────────────────────────────────────────────
