@@ -45,27 +45,43 @@ const RUN_CLIP_NAMES = ['Run', 'Running', 'run', 'running', 'RunCycle', 'Armatur
 const RealCharacterModel: React.FC = () => {
   const group = useRef<THREE.Group>(null);
   const { scene, animations } = useGLTF('/models/runner.glb');
-  // Skinned/rigged models must be cloned per-instance (SkeletonUtils, not a
-  // plain .clone()) — the object useGLTF returns is a shared, cached
-  // singleton, and reusing it directly is a well-known cause of a rigged
-  // model silently failing to render (broken bone bindings, stale
-  // visibility/matrix state left over from a previous mount).
   const clonedScene = useMemo(() => {
     const c = cloneSkeleton(scene) as THREE.Group;
     c.visible = true;
     c.traverse(obj => { obj.visible = true; obj.frustumCulled = false; });
+    const box = new THREE.Box3().setFromObject(c);
+    // eslint-disable-next-line no-console
+    console.log('[runner.glb] loaded. animations:', animations.map(a => a.name),
+      'bbox size (local units, before ×0.01 scale):', box.getSize(new THREE.Vector3()),
+      'bbox min/max:', box.min, box.max);
     return c;
-  }, [scene]);
+  }, [scene, animations]);
   const { actions } = useAnimations(animations, group);
 
   useEffect(() => {
     const clipName = RUN_CLIP_NAMES.find(n => actions[n]) ?? Object.keys(actions)[0];
     const action = clipName ? actions[clipName] : undefined;
+    // eslint-disable-next-line no-console
+    console.log('[runner.glb] playing clip:', clipName, 'action found:', !!action);
     action?.reset().play();
     return () => { action?.stop(); };
   }, [actions]);
 
-  return <primitive ref={group} object={clonedScene} scale={0.01} position={[0, -1.1, 0]} />;
+  return (
+    <>
+      {/* TEMPORARY diagnostic marker — bright magenta box, plain geometry,
+          guaranteed to render regardless of GLTF loading. If you see this
+          box on the path but not the character, the model loaded but its
+          mesh/material isn't rendering. If you don't see even this box,
+          the whole group isn't mounting where expected. Remove once the
+          real model is confirmed working. */}
+      <mesh position={[0, 0.9, 0]}>
+        <boxGeometry args={[0.6, 1.8, 0.6]} />
+        <meshBasicMaterial color="#ff00ff" wireframe />
+      </mesh>
+      <primitive ref={group} object={clonedScene} scale={0.01} position={[0, -1.1, 0]} />
+    </>
+  );
 };
 
 // ── NEW: Spacecraft geometries ─────────────────────────────────────────────────
