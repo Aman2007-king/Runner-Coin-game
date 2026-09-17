@@ -49,11 +49,29 @@ const RealCharacterModel: React.FC = () => {
     const c = cloneSkeleton(scene) as THREE.Group;
     c.visible = true;
     c.traverse(obj => { obj.visible = true; obj.frustumCulled = false; });
-    const box = new THREE.Box3().setFromObject(c);
+
+    // Scale from the mesh's own static bind-pose geometry bounding box —
+    // NOT Box3().setFromObject() on the live hierarchy, which reads back an
+    // unreliable (often near-zero) size for a SkinnedMesh before its
+    // skeleton has completed its first update.
+    let maxHeight = 0;
+    c.traverse(obj => {
+      const mesh = obj as THREE.Mesh;
+      if ((mesh as any).isMesh && mesh.geometry) {
+        mesh.geometry.computeBoundingBox();
+        const bb = mesh.geometry.boundingBox;
+        if (bb) {
+          const h = bb.max.y - bb.min.y;
+          if (h > maxHeight) maxHeight = h;
+        }
+      }
+    });
+    const TARGET_HEIGHT = 1.8; // world units — matches the primitive figure's height
+    const factor = maxHeight > 0 ? TARGET_HEIGHT / maxHeight : 1;
+    c.scale.setScalar(factor);
     // eslint-disable-next-line no-console
     console.log('[runner.glb] loaded. animations:', animations.map(a => a.name),
-      'bbox size (local units, before ×0.01 scale):', box.getSize(new THREE.Vector3()),
-      'bbox min/max:', box.min, box.max);
+      'raw bind-pose height:', maxHeight, '→ applied scale:', factor);
     return c;
   }, [scene, animations]);
   const { actions } = useAnimations(animations, group);
@@ -69,17 +87,12 @@ const RealCharacterModel: React.FC = () => {
 
   return (
     <>
-      {/* TEMPORARY diagnostic marker — bright magenta box, plain geometry,
-          guaranteed to render regardless of GLTF loading. If you see this
-          box on the path but not the character, the model loaded but its
-          mesh/material isn't rendering. If you don't see even this box,
-          the whole group isn't mounting where expected. Remove once the
-          real model is confirmed working. */}
+      {/* TEMPORARY diagnostic marker — remove once the real model is confirmed working */}
       <mesh position={[0, 0.9, 0]}>
         <boxGeometry args={[0.6, 1.8, 0.6]} />
         <meshBasicMaterial color="#ff00ff" wireframe />
       </mesh>
-      <primitive ref={group} object={clonedScene} scale={0.01} position={[0, -1.1, 0]} />
+      <primitive ref={group} object={clonedScene} position={[0, -1.1, 0]} />
     </>
   );
 };
