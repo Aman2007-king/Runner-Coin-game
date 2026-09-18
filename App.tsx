@@ -1,103 +1,433 @@
 /**
  * @license SPDX-License-Identifier: Apache-2.0
  */
-import React, { Suspense, useRef } from 'react';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import React, { useRef, useEffect, useMemo, Suspense } from 'react';
+import { useFrame } from '@react-three/fiber';
+import { useGLTF, useAnimations } from '@react-three/drei';
+import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import * as THREE from 'three';
-import { Environment } from './components/World/Environment';
-import { Player } from './components/World/Player';
-import { LevelManager } from './components/World/LevelManager';
-import { Effects } from './components/World/Effects';
-import { HUD } from './components/UI/HUD';
-import { useStore } from './store';
-import { GameStatus } from './types';
-import { audio } from './components/System/Audio';
-import ErrorBoundary from './components/System/ErrorBoundary';
-import { IS_MOBILE } from './utils/device';
+import { useStore } from '../../store';
+import { LANE_WIDTH, GameStatus, SkinType, AircraftModel, AIRCRAFT_SPECS, ASSET_CONFIG } from '../../types';
+import { audio } from '../System/Audio';
+import { IS_MOBILE } from '../../utils/device';
 
+const GRAVITY    = 50;
+const JUMP_FORCE = 16;
+const MAX_DELTA  = 0.05;
+const SLIDE_H    = 0.4;
 
+// ── Static geometries ──────────────────────────────────────────────────────
+const TORSO_GEO  = new THREE.CylinderGeometry(0.25, 0.15, 0.6, 4);
+const HEAD_GEO   = new THREE.BoxGeometry(0.25, 0.3, 0.3);
+const ARM_GEO    = new THREE.BoxGeometry(0.12, 0.6, 0.12);
+const JOINT_GEO  = new THREE.SphereGeometry(0.07);
+const HIPS_GEO   = new THREE.CylinderGeometry(0.16, 0.16, 0.2);
+const LEG_GEO    = new THREE.BoxGeometry(0.15, 0.7, 0.15);
+const SHADOW_GEO = new THREE.CircleGeometry(0.5, IS_MOBILE ? 16 : 32);
+const SHIELD_GEO = new THREE.SphereGeometry(1, IS_MOBILE ? 12 : 20, IS_MOBILE ? 12 : 20);
 
-const CameraController: React.FC = () => {
-  const { camera, size } = useThree();
-  const { laneCount, screenShake, decayScreenShake } = useStore();
-  const shakeOffset = useRef(new THREE.Vector3());
+// ── Real character model — used once you drop /public/models/runner.glb and
+//    flip ASSET_CONFIG.useRealCharacterModel (see /public/ASSETS_README.md).
+//    Falls back to the primitive stick-figure below if the file is missing,
+//    fails to load, or has no recognizable run-cycle animation clip.
+class AssetFallbackBoundary extends React.Component<{ fallback: React.ReactNode; children: React.ReactNode }, { failed: boolean }> {
+  constructor(props: { fallback: React.ReactNode; children: React.ReactNode }) {
+    super(props);
+    this.state = { failed: false };
+  }
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch() { /* expected until the real model file is added — no need to log */ }
+  render() { return this.state.failed ? this.props.fallback : this.props.children; }
+}
 
-  useFrame((_, delta) => {
-    const isMobile = size.width / size.height < 1.2;
-    const extra    = Math.max(0, laneCount - 3);
-    const targetY  = 5.5 + extra * (isMobile ? 2.0 : 0.5);
-    const targetZ  = 8.0 + extra * (isMobile ? 4.5 : 1.0);
-    const dt       = Math.min(delta, 0.05);
-    camera.position.lerp(new THREE.Vector3(0, targetY, targetZ), dt * 2.0);
-    camera.lookAt(0, 0, -30);
-    if (screenShake > 0) {
-      const mag = screenShake * screenShake * 0.4;
-      shakeOffset.current.set((Math.random()-.5)*mag, (Math.random()-.5)*mag, 0);
-      camera.position.add(shakeOffset.current);
-      decayScreenShake(delta);
-    }
-  });
-  return null;
+const RUN_CLIP_NAMES = ['Run', 'Running', 'run', 'running', 'RunCycle', 'Armature|Run', 'Take 001'];
+
+const RealCharacterModel: React.FC = () => {
+  const group = useRef<THREE.Group>(null);
+  const { scene, animations } = useGLTF('/models/runner.glb');
+  const clonedScene = useMemo(() => {
+    const c = cloneSkeleton(scene) as THREE.Group;
+    c.visible = true;
+    c.traverse(obj => { obj.visible = true; obj.frustumCulled = false; });
+    const box = new THREE.Box3().setFromObject(c);
+    // eslint-disable-next-line no-console
+    console.log('[runner.glb] loaded. animations:', animations.map(a => a.name),
+      'bbox size (local units, before ×0.01 scale):', box.getSize(new THREE.Vector3()),
+      'bbox min/max:', box.min, box.max);
+    return c;
+  }, [scene, animations]);
+  const { actions } = useAnimations(animations, group);
+
+  useEffect(() => {
+    const clipName = RUN_CLIP_NAMES.find(n => actions[n]) ?? Object.keys(actions)[0];
+    const action = clipName ? actions[clipName] : undefined;
+    // eslint-disable-next-line no-console
+    console.log('[runner.glb] playing clip:', clipName, 'action found:', !!action);
+    action?.reset().play();
+    return () => { action?.stop(); };
+  }, [actions]);
+
+  return (
+    <>
+      {/* TEMPORARY diagnostic marker — bright magenta box, plain geometry,
+          guaranteed to render regardless of GLTF loading. If you see this
+          box on the path but not the character, the model loaded but its
+          mesh/material isn't rendering. If you don't see even this box,
+          the whole group isn't mounting where expected. Remove once the
+          real model is confirmed working. */}
+      <mesh position={[0, 0.9, 0]}>
+        <boxGeometry args={[0.6, 1.8, 0.6]} />
+        <meshBasicMaterial color="#ff00ff" wireframe />
+      </mesh>
+      <primitive ref={group} object={clonedScene} scale={0.01} position={[0, -1.1, 0]} />
+    </>
+  );
 };
 
-const RunnerScene: React.FC = () => (
-  <>
-    <Environment />
-    <group name="PlayerGroup" userData={{ isPlayer: true }}>
-      <Player />
-    </group>
-    <LevelManager />
-    <Effects />
-  </>
-);
+// ── NEW: Spacecraft geometries ─────────────────────────────────────────────────
+const SHIP_NOSE_GEO   = new THREE.ConeGeometry(0.28, 0.9, IS_MOBILE ? 6 : 8);
+const SHIP_HULL_GEO   = new THREE.CylinderGeometry(0.28, 0.4, 1.1, IS_MOBILE ? 6 : 8);
+const SHIP_CANOPY_GEO = new THREE.SphereGeometry(0.22, IS_MOBILE ? 8 : 12, IS_MOBILE ? 6 : 8, 0, Math.PI * 2, 0, Math.PI / 2);
+const SHIP_WING_GEO   = new THREE.BoxGeometry(1.1, 0.08, 0.55);
+const SHIP_FIN_GEO    = new THREE.BoxGeometry(0.06, 0.4, 0.35);
+const SHIP_ENGINE_GEO = new THREE.CylinderGeometry(0.18, 0.1, 0.5, 6);
+const SHIP_GLOW_GEO   = new THREE.SphereGeometry(0.22, IS_MOBILE ? 6 : 10, IS_MOBILE ? 6 : 10);
+const ROCKET_TRAIL_GEO = new THREE.ConeGeometry(0.18, 0.9, 6);
 
-export default function App() {
-  const { status, togglePause } = useStore();
+function buildMaterials(skin: SkinType, immortal: boolean) {
+  // Default skin = an actual adventurer (skin tone / shirt / pants), not a neon robot.
+  // Purchased neon skins keep their uniform glowing-suit look.
+  let skinTone = '#e0a878', shirt = '#3a6ea5', pants = '#4a3826', glow = '#ffcf9e';
+  let uniform  = false;
+  if (immortal)                         { skinTone = shirt = pants = '#ffd700'; glow = '#ffffff'; uniform = true; }
+  else if (skin === SkinType.NEON_BLUE) { skinTone = shirt = pants = '#0066ff'; glow = '#00ffff'; uniform = true; }
+  else if (skin === SkinType.NEON_GOLD) { skinTone = shirt = pants = '#ffaa00'; glow = '#ffff00'; uniform = true; }
+  else if (skin === SkinType.PHANTOM)   { skinTone = shirt = pants = '#333333'; glow = '#ff00ff'; uniform = true; }
+  const rough = uniform ? 0.3 : 0.7, metal = uniform ? 0.8 : 0.1;
+  return {
+    skin:   new THREE.MeshStandardMaterial({ color: skinTone, roughness: rough, metalness: metal }),
+    shirt:  new THREE.MeshStandardMaterial({ color: shirt,    roughness: rough, metalness: metal }),
+    pants:  new THREE.MeshStandardMaterial({ color: pants,    roughness: rough, metalness: metal }),
+    arm:    new THREE.MeshStandardMaterial({ color: shirt,    roughness: rough, metalness: metal }), // legacy alias
+    joint:  new THREE.MeshStandardMaterial({ color: '#111111', roughness: 0.7, metalness: 0.5 }),
+    glow:   new THREE.MeshBasicMaterial({ color: glow }),
+    shadow: new THREE.MeshBasicMaterial({ color: '#000000', opacity: 0.3, transparent: true }),
+    shield: new THREE.MeshStandardMaterial({
+      color: '#4488ff', transparent: true, opacity: 0.15,
+      wireframe: true, emissive: '#00aaff', emissiveIntensity: 1.5,
+      side: THREE.DoubleSide,
+    }),
+  };
+}
 
-  React.useEffect(() => {
-    if (status === GameStatus.PLAYING) audio.startMusic();
-    else audio.stopMusic();
+// ── NEW: build ship materials based on aircraft model ─────────────────────────
+function buildShipMaterials(model: AircraftModel) {
+  const spec  = AIRCRAFT_SPECS[model];
+  const col   = spec.color;
+  return {
+    body:   new THREE.MeshStandardMaterial({ color: '#0a0a1a', roughness: 0.3, metalness: 0.9 }),
+    accent: new THREE.MeshStandardMaterial({ color: col, roughness: 0.1, metalness: 1.0, emissive: col, emissiveIntensity: 0.6 }),
+    canopy: new THREE.MeshStandardMaterial({ color: '#66d9ff', roughness: 0.05, metalness: 0.2, transparent: true, opacity: 0.8, emissive: '#66d9ff', emissiveIntensity: 0.3 }),
+    engine: new THREE.MeshStandardMaterial({ color: '#222244', roughness: 0.5, metalness: 0.7 }),
+    glow:   new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.85 }),
+    trail:  new THREE.MeshBasicMaterial({ color: '#ff8800', transparent: true, opacity: 0.5 }),
+    shield: new THREE.MeshStandardMaterial({
+      color: '#00ff88', transparent: true, opacity: 0.12,
+      wireframe: true, emissive: '#00ff88', emissiveIntensity: 2.0, side: THREE.DoubleSide,
+    }),
+  };
+}
+
+export const Player: React.FC = () => {
+  const groupRef  = useRef<THREE.Group>(null);
+  const bodyRef   = useRef<THREE.Group>(null);
+  const shadowRef = useRef<THREE.Mesh>(null);
+  const shieldRef = useRef<THREE.Mesh>(null);
+  const lArmRef   = useRef<THREE.Group>(null);
+  const rArmRef   = useRef<THREE.Group>(null);
+  const lLegRef   = useRef<THREE.Group>(null);
+  const rLegRef   = useRef<THREE.Group>(null);
+
+  const {
+    status, laneCount, takeDamage, hasDoubleJump, activateImmortality,
+    isImmortalityActive, currentSkin, shieldActive, speedBoostActive,
+    startSlide, isSliding,
+    // ── NEW ─────────────────────────────────────────────────────────────────
+    gamePhase, selectedAircraft, takeDamageSpace, shipShieldConsumed,
+    rocketsRemaining, fireRocket,
+  } = useStore();
+
+  const [lane, setLane] = React.useState(0);
+  const targetX         = useRef(0);
+  const isJumping       = useRef(false);
+  const velocityY       = useRef(0);
+  const jumpsDone       = useRef(0);
+  const spinRot         = useRef(0);
+  const touchX          = useRef(0);
+  const touchY          = useRef(0);
+  const isInvincible    = useRef(false);
+  const lastHitTime     = useRef(0);
+
+  // ── NEW: ship mouse target in Phase 3 ────────────────────────────────────
+  const shipTargetX = useRef(0);
+  const shipTargetY = useRef(0);
+
+  const mats = useMemo(
+    () => buildMaterials(currentSkin, isImmortalityActive),
+    [currentSkin, isImmortalityActive],
+  );
+  useEffect(() => () => { Object.values(mats).forEach((m: any) => m.dispose()); }, [mats]);
+
+  // ── NEW: ship materials ───────────────────────────────────────────────────
+  const shipModel = selectedAircraft ?? AircraftModel.ALPHA;
+  const shipMats  = useMemo(() => buildShipMaterials(shipModel), [shipModel]);
+  useEffect(() => () => { Object.values(shipMats).forEach((m: any) => m.dispose()); }, [shipMats]);
+
+  // Reset on new game
+  useEffect(() => {
+    if (status === GameStatus.PLAYING) {
+      isJumping.current = false; jumpsDone.current = 0;
+      velocityY.current = 0;    spinRot.current   = 0;
+      setLane(0);
+      if (groupRef.current) groupRef.current.position.set(0, 0, 0);
+      if (bodyRef.current)  bodyRef.current.rotation.x = 0;
+    }
   }, [status]);
 
-  React.useEffect(() => {
+  // Clamp lane when laneCount changes
+  useEffect(() => {
+    const max = Math.floor(laneCount / 2);
+    setLane(l => Math.max(Math.min(l, max), -max));
+  }, [laneCount]);
+
+  const doJump = () => {
+    const maxJ = hasDoubleJump ? 2 : 1;
+    if (!isJumping.current) {
+      audio.playJump(false);
+      isJumping.current = true; jumpsDone.current = 1; velocityY.current = JUMP_FORCE;
+    } else if (jumpsDone.current < maxJ) {
+      audio.playJump(true);
+      jumpsDone.current++; velocityY.current = JUMP_FORCE; spinRot.current = 0;
+    }
+  };
+
+  const doSlide = () => {
+    if (!isJumping.current) { startSlide(); audio.playSlide(); }
+  };
+
+  const doFireRocket = () => {
+    if (status !== GameStatus.PLAYING || gamePhase !== 3) return;
+    if (rocketsRemaining > 0) {
+      fireRocket();
+      window.dispatchEvent(new CustomEvent('player-fire-rocket', { detail: { lane } }));
+    }
+  };
+
+  // ── Keyboard (Phase 1 — original + NEW Phase 3 controls) ──────────────────
+  useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') togglePause();
+      if (status !== GameStatus.PLAYING) return;
+
+      // ── NEW: Phase 3 keyboard ──────────────────────────────────────────────
+      if (gamePhase === 3) {
+        const max = Math.floor(laneCount / 2);
+        if (e.key === 'ArrowLeft'  || e.key === 'a') setLane(l => Math.max(l - 1, -max));
+        if (e.key === 'ArrowRight' || e.key === 'd') setLane(l => Math.min(l + 1,  max));
+        if (e.key === 'r' || e.key === 'R') doFireRocket();
+        return;
+      }
+
+      // Phase 1 original controls
+      const max = Math.floor(laneCount / 2);
+      if (e.key === 'ArrowLeft'  || e.key === 'a') setLane(l => Math.max(l - 1, -max));
+      if (e.key === 'ArrowRight' || e.key === 'd') setLane(l => Math.min(l + 1,  max));
+      if (e.key === 'ArrowUp'    || e.key === 'w') doJump();
+      if (e.key === 'ArrowDown'  || e.key === 's') doSlide();
+      if (e.key === ' ')                            activateImmortality();
     };
     window.addEventListener('keydown', down);
     return () => window.removeEventListener('keydown', down);
-  }, [togglePause]);
+  }, [status, laneCount, hasDoubleJump, activateImmortality, gamePhase, rocketsRemaining, fireRocket, lane]);
 
-  const dpr: [number, number] = IS_MOBILE ? [1, 1] : [1, 1.5];
+  // ── NEW: on-screen ROCKET button (HUD dispatches this on tap) ──────────────
+  useEffect(() => {
+    window.addEventListener('fire-rocket-ui', doFireRocket);
+    return () => window.removeEventListener('fire-rocket-ui', doFireRocket);
+  }, [status, gamePhase, rocketsRemaining, fireRocket, lane]);
 
-  // The 3D scene renders for both Phase 1 (runner) and Phase 3 (space shooter) —
-  // Environment/Player/LevelManager each branch internally on gamePhase.
-  // It's only skipped for the two full-screen HUD-only overlay statuses.
-  const isAircraftShop    = (status as string) === 'AIRCRAFT_SHOP';
-  const isSpaceTransition = (status as string) === 'SPACE_TRANSITION';
-  const showScene         = !isAircraftShop && !isSpaceTransition;
+  // Touch (original Phase 1 logic + NEW Phase 3 swipe)
+  useEffect(() => {
+    const start = (e: TouchEvent) => {
+      touchX.current = e.touches[0].clientX;
+      touchY.current = e.touches[0].clientY;
+    };
+    const end = (e: TouchEvent) => {
+      if (status !== GameStatus.PLAYING) return;
+      const dx  = e.changedTouches[0].clientX - touchX.current;
+      const dy  = e.changedTouches[0].clientY - touchY.current;
+      const max = Math.floor(laneCount / 2);
+      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 25) {
+        if (dx > 0) setLane(l => Math.min(l + 1, max));
+        else        setLane(l => Math.max(l - 1, -max));
+      } else if (gamePhase === 1) {
+        // Phase 1 only: up/down swipe = jump/slide
+        if      (dy < -25 && Math.abs(dy) > Math.abs(dx)) doJump();
+        else if (dy >  25 && Math.abs(dy) > Math.abs(dx)) doSlide();
+        else if (Math.abs(dx) < 10 && Math.abs(dy) < 10)  activateImmortality();
+      }
+    };
+    window.addEventListener('touchstart', start, { passive: true });
+    window.addEventListener('touchend', end);
+    return () => {
+      window.removeEventListener('touchstart', start);
+      window.removeEventListener('touchend', end);
+    };
+  }, [status, laneCount, hasDoubleJump, activateImmortality, gamePhase]);
 
-  return (
-    <ErrorBoundary>
-      <div className="relative w-full h-screen bg-black overflow-hidden select-none">
-        {/* HUD overlay on all screens (handles aircraft shop, transition, game over etc.) */}
-        <HUD />
+  // Damage handler — routes to correct takeDamage depending on phase
+  useEffect(() => {
+    const hit = () => {
+      if (isInvincible.current || isImmortalityActive) return;
+      audio.playDamage();
+      if (gamePhase === 3) takeDamageSpace();
+      else                 takeDamage();
+      isInvincible.current = true;
+      lastHitTime.current  = Date.now();
+    };
+    window.addEventListener('player-hit', hit);
+    return () => window.removeEventListener('player-hit', hit);
+  }, [takeDamage, takeDamageSpace, isImmortalityActive, gamePhase]);
 
-        {/* 3D scene — runner (levels 1-5) and space shooter (levels 6-10) */}
-        {showScene && (
-          <Canvas
-            dpr={dpr}
-            gl={{ antialias: false, stencil: false, depth: true, powerPreference: 'high-performance' }}
-            camera={{ position: [0, 5.5, 8], fov: 60 }}
-            frameloop="always"
-            style={{ position: 'absolute', inset: 0 }}
-          >
-            <CameraController />
-            <Suspense fallback={null}>
-              <RunnerScene />
-            </Suspense>
-          </Canvas>
-        )}
-      </div>
-    </ErrorBoundary>
-  );
-}
+  // Boost ramp launch (Phase 1 only)
+  useEffect(() => {
+    const launch = () => {
+      isJumping.current = true;
+      jumpsDone.current = 1;
+      velocityY.current = JUMP_FORCE * 1.4;
+      audio.playBoost();
+    };
+    window.addEventListener('boost-launch', launch);
+    return () => window.removeEventListener('boost-launch', launch);
+  }, []);
+
+  useFrame((state, delta) => {
+    if (!groupRef.current) return;
+    if (status === GameStatus.PAUSED) return;
+    if (status !== GameStatus.PLAYING) return;
+    const dt = Math.min(delta, MAX_DELTA);
+
+    // ── NEW: Phase 3 ship movement ───────────────────────────────────────────
+    if (gamePhase === 3) {
+      const spec        = AIRCRAFT_SPECS[shipModel];
+      const agilityMult = spec.enhancedAgility ? 1.5 : 1.0;
+      targetX.current   = lane * LANE_WIDTH;
+      groupRef.current.position.x = THREE.MathUtils.lerp(
+        groupRef.current.position.x, targetX.current, dt * 14 * agilityMult,
+      );
+      // Gentle hover bob
+      groupRef.current.position.y = Math.sin(state.clock.elapsedTime * 2.5) * 0.12;
+      // Bank into turns
+      const xDiff = targetX.current - groupRef.current.position.x;
+      groupRef.current.rotation.z = -xDiff * 0.15;
+      // Engine glow pulse via bodyRef
+      if (bodyRef.current) {
+        bodyRef.current.children.forEach((child, i) => {
+          if (child instanceof THREE.Mesh && i > 3) {
+            const mat = child.material as THREE.MeshBasicMaterial;
+            if (mat.transparent) mat.opacity = 0.5 + Math.sin(state.clock.elapsedTime * 8 + i) * 0.3;
+          }
+        });
+      }
+      // Invincibility flicker
+      if (isInvincible.current) {
+        if (Date.now() - lastHitTime.current > 1500) {
+          isInvincible.current = false; groupRef.current.visible = true;
+        } else {
+          groupRef.current.visible = Math.floor(Date.now() / 50) % 2 === 0;
+        }
+      } else {
+        groupRef.current.visible = true;
+      }
+      return;
+    }
+
+    // ── Phase 1: original runner movement (unchanged) ────────────────────────
+    targetX.current = lane * LANE_WIDTH;
+    groupRef.current.position.x = THREE.MathUtils.lerp(
+      groupRef.current.position.x, targetX.current, dt * 15,
+    );
+
+    if (bodyRef.current) {
+      const targetScaleY = isSliding ? SLIDE_H : 1;
+      bodyRef.current.scale.y = THREE.MathUtils.lerp(bodyRef.current.scale.y, targetScaleY, dt * 12);
+    }
+
+    if (isJumping.current) {
+      groupRef.current.position.y += velocityY.current * dt;
+      velocityY.current -= GRAVITY * dt;
+      if (groupRef.current.position.y <= 0) {
+        groupRef.current.position.y = 0;
+        isJumping.current = false; jumpsDone.current = 0; velocityY.current = 0;
+        if (bodyRef.current) bodyRef.current.rotation.x = 0;
+      }
+      if (jumpsDone.current === 2 && bodyRef.current) {
+        spinRot.current = Math.max(-Math.PI * 2, spinRot.current - dt * 15);
+        bodyRef.current.rotation.x = spinRot.current;
+      }
+    }
+
+    const xDiff = targetX.current - groupRef.current.position.x;
+    groupRef.current.rotation.z = -xDiff * 0.2;
+
+    const t = state.clock.elapsedTime * 25;
+    if (!isJumping.current && !isSliding) {
+      if (lArmRef.current) lArmRef.current.rotation.x = Math.sin(t) * 0.7;
+      if (rArmRef.current) rArmRef.current.rotation.x = Math.sin(t + Math.PI) * 0.7;
+      if (lLegRef.current) lLegRef.current.rotation.x = Math.sin(t + Math.PI) * 1.0;
+      if (rLegRef.current) rLegRef.current.rotation.x = Math.sin(t) * 1.0;
+      if (bodyRef.current) bodyRef.current.position.y = 1.1 + Math.abs(Math.sin(t)) * 0.1;
+    }
+
+    if (shadowRef.current) {
+      const h = groupRef.current.position.y;
+      const s = Math.max(0.2, 1 - h / 5);
+      shadowRef.current.scale.set(s, s, s);
+      (shadowRef.current.material as THREE.MeshBasicMaterial).opacity = Math.max(0.1, 0.3 - h * 0.04);
+    }
+
+    if (shieldRef.current && shieldActive) {
+      const p = 1.2 + Math.sin(state.clock.elapsedTime * 4) * 0.05;
+      shieldRef.current.scale.set(p, p, p);
+      shieldRef.current.rotation.y += dt * 0.5;
+    }
+
+    if (isInvincible.current) {
+      if (Date.now() - lastHitTime.current > 1500) {
+        isInvincible.current = false; groupRef.current.visible = true;
+      } else {
+        groupRef.current.visible = Math.floor(Date.now() / 50) % 2 === 0;
+      }
+    } else {
+      groupRef.current.visible = true;
+    }
+  });
+
+  // ── NEW: Phase 3 — spacecraft render ──────────────────────────────────────
+  if (gamePhase === 3) {
+    const spec = AIRCRAFT_SPECS[shipModel];
+    return (
+      <group ref={groupRef}>
+        <group ref={bodyRef}>
+          {/* Nose cone */}
+          <mesh position={[0, 0.95, 0]} geometry={SHIP_NOSE_GEO} material={shipMats.body} />
+          {/* Fuselage hull */}
+          <mesh position={[0, 0.05, 0]} rotation={[Math.PI, 0, 0]} geometry={SHIP_HULL_GEO} material={shipMats.body} />
+          {/* Hull accent stripe */}
+          <mesh position={[0, 0.05, 0]} rotation={[Math.PI, 0, 0]} scale={[0.55, 1.0, 0.55]} geometry={SHIP_HULL_GEO} material={shipMats.accent} />
+          {/* Cockpit canopy */}
+          <mesh position={[0, 0.55, 0.08]} rotation={[-0.3, 0, 0]} geometry={SHIP_CANOPY_GEO} material={shipMats.canopy} />
+          {/* Swept wings (angled, fighter-jet silhouette) */}
+          <mesh position={[-0.55, -0.15, 0.15]} rotation={[0, 0, 0.28]} geometry={SHIP_WING_GEO} material={shipMats.body} />
+          <mesh position={[ 0.55, -0.15, 0.15]} rotation={[0, 0, -0.28]} geometry={SHIP_WING_GEO} material={shipMats.body} />
+          <mesh position={[-0.55, -0.15, 0.15]} rotation={[0, 0, 0.28]} scale={[1.0, 2.2, 1.0]} geometry={SHIP_WING_GEO} material={shipMats.accent} />
+          <mesh position={[ 0.55, -0.15, 0.15]} rotation={[0, 0, -0.28]} scale={[1.0, 2.2, 1.0]} geomet
