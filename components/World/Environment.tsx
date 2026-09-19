@@ -1,7 +1,7 @@
 /**
  * @license SPDX-License-Identifier: Apache-2.0
  */
-import React, { useRef, useMemo, Suspense } from 'react';
+import React, { useRef, useMemo, useEffect, Suspense } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useTexture } from '@react-three/drei';
 import * as THREE from 'three';
@@ -113,7 +113,7 @@ const WideGround: React.FC<{ biome: BiomeType }> = ({ biome }) => {
   });
 
   return (
-    <mesh ref={ref} rotation={[-Math.PI/2, 0, 0]} position={[0, -0.25, -100]}>
+    <mesh ref={ref} rotation={[-Math.PI/2, 0, 0]} position={[0, -0.25, -100]} receiveShadow>
       <planeGeometry args={[300, 400]} />
       <meshStandardMaterial color={cols.ambient} roughness={1} />
     </mesh>
@@ -215,6 +215,7 @@ const ProceduralPathFloor: React.FC<{ laneCount: number; biome: BiomeType }> = (
   const speed  = useStore(s => s.speed);
   const cols   = BIOME_COLORS[biome];
   const texture = useMemo(() => makePathTexture(cols.floor, cols.grid, !!MOSS_BIOMES[biome]), [cols.floor, cols.grid, biome]);
+  useEffect(() => () => { texture?.dispose(); }, [texture]);
 
   useFrame((_, delta) => {
     if (!texture) return;
@@ -222,7 +223,7 @@ const ProceduralPathFloor: React.FC<{ laneCount: number; biome: BiomeType }> = (
   });
 
   return (
-    <mesh position={[0, -0.02, -20]} rotation={[-Math.PI/2, 0, 0]}>
+    <mesh position={[0, -0.02, -20]} rotation={[-Math.PI/2, 0, 0]} receiveShadow>
       <planeGeometry args={[laneCount * LANE_WIDTH, 200]} />
       {texture
         ? <meshStandardMaterial map={texture} roughness={0.95} />
@@ -251,7 +252,7 @@ const RealPathFloor: React.FC<{ laneCount: number }> = ({ laneCount }) => {
   });
 
   return (
-    <mesh position={[0, -0.02, -20]} rotation={[-Math.PI/2, 0, 0]}>
+    <mesh position={[0, -0.02, -20]} rotation={[-Math.PI/2, 0, 0]} receiveShadow>
       <planeGeometry args={[laneCount * LANE_WIDTH, 200]} />
       <meshStandardMaterial ref={ref} map={diffuse} roughness={0.95} />
     </mesh>
@@ -339,31 +340,58 @@ const Prop: React.FC<{ kind: PropKind; cols: { accent: string; dir: string; floo
     case 'palm':
       return (
         <>
-          <mesh position={[0, 1.5, 0]}><cylinderGeometry args={[0.15, 0.22, 3, 6]} /><meshStandardMaterial {...trunkMat} roughness={0.9} /></mesh>
-          <mesh position={[0, 2.7, 0]}><coneGeometry args={[1.7, 1.3, 7]} /><meshStandardMaterial color={cols.dir} roughness={0.8} /></mesh>
-          <mesh position={[0, 3.4, 0]}><coneGeometry args={[1.3, 1.6, 7]} /><meshStandardMaterial color={cols.accent} roughness={0.8} /></mesh>
+          <mesh position={[0, 1.5, 0]} castShadow>
+            <cylinderGeometry args={[0.15, 0.22, 3, 6]} />
+            <meshStandardMaterial {...trunkMat} roughness={0.9} />
+          </mesh>
+          <mesh position={[0, 2.7, 0]} castShadow>
+            <coneGeometry args={[1.7, 1.3, 7]} />
+            <meshStandardMaterial color={cols.dir} roughness={0.8} />
+          </mesh>
+          <mesh position={[0, 3.4, 0]} castShadow>
+            <coneGeometry args={[1.3, 1.6, 7]} />
+            <meshStandardMaterial color={cols.accent} roughness={0.8} />
+          </mesh>
         </>
       );
     case 'pine':
       return (
         <>
-          <mesh position={[0, 1, 0]}><cylinderGeometry args={[0.15, 0.2, 2, 6]} /><meshStandardMaterial {...trunkMat} roughness={0.9} /></mesh>
-          <mesh position={[0, 2.6, 0]}><coneGeometry args={[1.1, 2.2, 7]} /><meshStandardMaterial color={cols.accent} roughness={0.8} /></mesh>
-          <mesh position={[0, 3.8, 0]}><coneGeometry args={[0.8, 1.8, 7]} /><meshStandardMaterial color={cols.dir} roughness={0.8} /></mesh>
-          <mesh position={[0, 4.8, 0]}><coneGeometry args={[0.5, 1.4, 7]} /><meshStandardMaterial color={cols.accent} roughness={0.8} /></mesh>
+          <mesh position={[0, 1, 0]} castShadow>
+            <cylinderGeometry args={[0.15, 0.2, 2, 6]} />
+            <meshStandardMaterial {...trunkMat} roughness={0.9} />
+          </mesh>
+          <mesh position={[0, 2.6, 0]} castShadow>
+            <coneGeometry args={[1.1, 2.2, 7]} />
+            <meshStandardMaterial color={cols.accent} roughness={0.8} />
+          </mesh>
+          <mesh position={[0, 3.8, 0]} castShadow>
+            <coneGeometry args={[0.8, 1.8, 7]} />
+            <meshStandardMaterial color={cols.dir} roughness={0.8} />
+          </mesh>
+          <mesh position={[0, 4.8, 0]} castShadow>
+            <coneGeometry args={[0.5, 1.4, 7]} />
+            <meshStandardMaterial color={cols.accent} roughness={0.8} />
+          </mesh>
         </>
       );
     case 'pillar_jungle':
     case 'pillar_desert':
       return (
         <>
-          <mesh position={[0, 2, 0]}><cylinderGeometry args={[0.6, 0.7, 4, 8]} /><meshStandardMaterial color={cols.grid} roughness={0.95} /></mesh>
-          <mesh position={[0, 4.2, 0]}><boxGeometry args={[1.6, 0.4, 1.6]} /><meshStandardMaterial color={cols.accent} roughness={0.9} /></mesh>
+          <mesh position={[0, 2, 0]} castShadow>
+            <cylinderGeometry args={[0.6, 0.7, 4, 8]} />
+            <meshStandardMaterial color={cols.grid} roughness={0.95} />
+          </mesh>
+          <mesh position={[0, 4.2, 0]} castShadow>
+            <boxGeometry args={[1.6, 0.4, 1.6]} />
+            <meshStandardMaterial color={cols.accent} roughness={0.9} />
+          </mesh>
         </>
       );
     case 'dune':
       return (
-        <mesh scale={[1.6, 0.6, 1.6]} position={[0, 0.3, 0]}>
+        <mesh scale={[1.6, 0.6, 1.6]} position={[0, 0.3, 0]} castShadow>
           <sphereGeometry args={[2, 10, 6]} />
           <meshStandardMaterial color={cols.floor} roughness={1} />
         </mesh>
@@ -371,13 +399,19 @@ const Prop: React.FC<{ kind: PropKind; cols: { accent: string; dir: string; floo
     case 'rock_spire':
       return (
         <>
-          <mesh position={[0, 1.5, 0]}><cylinderGeometry args={[0.9, 1.3, 3, 6]} /><meshStandardMaterial color={cols.grid} roughness={1} /></mesh>
-          <mesh position={[0, 3.4, 0]}><cylinderGeometry args={[0.4, 0.9, 2, 6]} /><meshStandardMaterial color={cols.accent} roughness={1} /></mesh>
+          <mesh position={[0, 1.5, 0]} castShadow>
+            <cylinderGeometry args={[0.9, 1.3, 3, 6]} />
+            <meshStandardMaterial color={cols.grid} roughness={1} />
+          </mesh>
+          <mesh position={[0, 3.4, 0]} castShadow>
+            <cylinderGeometry args={[0.4, 0.9, 2, 6]} />
+            <meshStandardMaterial color={cols.accent} roughness={1} />
+          </mesh>
         </>
       );
     case 'ice_spike':
       return (
-        <mesh position={[0, 2, 0]}>
+        <mesh position={[0, 2, 0]} castShadow>
           <coneGeometry args={[0.7, 4, 5]} />
           <meshStandardMaterial color={cols.accent} transparent opacity={0.75} roughness={0.1} metalness={0.2} />
         </mesh>
@@ -385,8 +419,14 @@ const Prop: React.FC<{ kind: PropKind; cols: { accent: string; dir: string; floo
     case 'ice_pillar':
       return (
         <>
-          <mesh position={[0, 2, 0]}><cylinderGeometry args={[0.7, 0.8, 4, 8]} /><meshStandardMaterial color={cols.floor} transparent opacity={0.85} roughness={0.2} /></mesh>
-          <mesh position={[0, 4.2, 0]}><boxGeometry args={[1.5, 0.4, 1.5]} /><meshStandardMaterial color={cols.dir} roughness={0.9} /></mesh>
+          <mesh position={[0, 2, 0]} castShadow>
+            <cylinderGeometry args={[0.7, 0.8, 4, 8]} />
+            <meshStandardMaterial color={cols.floor} transparent opacity={0.85} roughness={0.2} />
+          </mesh>
+          <mesh position={[0, 4.2, 0]} castShadow>
+            <boxGeometry args={[1.5, 0.4, 1.5]} />
+            <meshStandardMaterial color={cols.dir} roughness={0.9} />
+          </mesh>
         </>
       );
     default:
@@ -543,6 +583,7 @@ const PathArches: React.FC<{ biome: BiomeType }> = ({ biome }) => {
   const span = laneCount * LANE_WIDTH + 2;
   const archZs = useMemo(() => Array.from({ length: 6 }, (_, i) => -30 - i * 45), []);
   const faceTexture = useMemo(() => makeCarvedFaceTexture(cols.grid, '#1a1208'), [cols.grid]);
+  useEffect(() => () => { faceTexture?.dispose(); }, [faceTexture]);
 
   useFrame((_, delta) => {
     if (!enabled || !ref.current) return;
@@ -556,7 +597,7 @@ const PathArches: React.FC<{ biome: BiomeType }> = ({ biome }) => {
     <group ref={ref}>
       {archZs.map((z, i) => (
         <group key={i} position={[0, 0, z]}>
-          <mesh position={[-span / 2, 3, 0]}>
+          <mesh position={[-span / 2, 3, 0]} castShadow receiveShadow>
             <boxGeometry args={[0.9, 6, 0.9]} />
             <meshStandardMaterial color={cols.grid} roughness={0.95} />
           </mesh>
@@ -566,7 +607,7 @@ const PathArches: React.FC<{ biome: BiomeType }> = ({ biome }) => {
               <meshBasicMaterial map={faceTexture} />
             </mesh>
           )}
-          <mesh position={[ span / 2, 3, 0]}>
+          <mesh position={[ span / 2, 3, 0]} castShadow receiveShadow>
             <boxGeometry args={[0.9, 6, 0.9]} />
             <meshStandardMaterial color={cols.grid} roughness={0.95} />
           </mesh>
@@ -576,11 +617,11 @@ const PathArches: React.FC<{ biome: BiomeType }> = ({ biome }) => {
               <meshBasicMaterial map={faceTexture} />
             </mesh>
           )}
-          <mesh position={[0, 6.2, 0]}>
+          <mesh position={[0, 6.2, 0]} castShadow receiveShadow>
             <boxGeometry args={[span + 1.2, 1, 1]} />
             <meshStandardMaterial color={cols.grid} roughness={0.95} />
           </mesh>
-          <mesh position={[0, 6.2, 0]} scale={[0.94, 0.5, 1.02]}>
+          <mesh position={[0, 6.2, 0]} scale={[0.94, 0.5, 1.02]} castShadow>
             <boxGeometry args={[span + 1.2, 1, 1]} />
             <meshStandardMaterial color={cols.accent} roughness={0.9} />
           </mesh>
@@ -626,6 +667,7 @@ const GalaxyDisc: React.FC<{ biome: BiomeType }> = ({ biome }) => {
     }
     return new THREE.CanvasTexture(canvas);
   }, [biome]);
+  useEffect(() => () => { texture?.dispose(); }, [texture]);
 
   if (!texture) return null;
 
@@ -802,7 +844,20 @@ export const Environment: React.FC = () => {
       <color attach="background" args={[cols.bg as any]} />
       <fog attach="fog" args={[cols.fog, IS_MOBILE ? 50 : 35, IS_MOBILE ? 140 : 200]} />
       <ambientLight intensity={0.9} color={cols.ambient} />
-      <directionalLight position={[10, 25, -10]} intensity={2.2} color={cols.dir} />
+      <directionalLight
+        position={[10, 25, -10]}
+        intensity={2.2}
+        color={cols.dir}
+        castShadow={!IS_MOBILE}
+        shadow-mapSize={[1024, 1024]}
+        shadow-camera-left={-20}
+        shadow-camera-right={20}
+        shadow-camera-top={20}
+        shadow-camera-bottom={-20}
+        shadow-camera-near={1}
+        shadow-camera-far={60}
+        shadow-bias={-0.0015}
+      />
       {!IS_MOBILE && (
         <pointLight position={[0, 20, -60]} intensity={1.5} color={cols.accent} distance={220} decay={2} />
       )}
