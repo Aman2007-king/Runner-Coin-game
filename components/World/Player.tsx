@@ -423,6 +423,18 @@ export const Player: React.FC = () => {
     } else {
       groupRef.current.visible = true;
     }
+
+    // TEMPORARY diagnostic — logs actual live state once per second so we
+    // don't have to guess from a single screenshot's timing.
+    if (Math.floor(state.clock.elapsedTime) !== Math.floor(state.clock.elapsedTime - dt)) {
+      // eslint-disable-next-line no-console
+      console.log('[player-debug]',
+        'groupRef.visible:', groupRef.current.visible,
+        'groupRef.position:', groupRef.current.position.toArray(),
+        'groupRef.scale:', groupRef.current.scale.toArray(),
+        'bodyRef.visible:', bodyRef.current?.visible,
+        'isInvincible:', isInvincible.current);
+    }
   });
 
   // ── NEW: Phase 3 — spacecraft render ──────────────────────────────────────
@@ -522,6 +534,14 @@ export const Player: React.FC = () => {
 
   return (
     <group ref={groupRef}>
+      {/* TEMPORARY diagnostic — solid box on the outermost group itself,
+          completely outside bodyRef/Suspense/GLTF/invincibility logic.
+          If this doesn't show up, the problem is groupRef's own position/
+          visibility/camera framing, not the character model. */}
+      <mesh position={[0, 1, 0]}>
+        <boxGeometry args={[0.8, 2, 0.8]} />
+        <meshBasicMaterial color="#ff00ff" />
+      </mesh>
       <group ref={bodyRef} position={[0, 1.1, 0]}>
         {ASSET_CONFIG.useRealCharacterModel ? (
           <AssetFallbackBoundary fallback={PrimitiveBody}>
