@@ -1,4 +1,4 @@
-/**
+]/**
  * @license SPDX-License-Identifier: Apache-2.0
  */
 import { create } from 'zustand';
@@ -474,10 +474,11 @@ export const useStore = create<GameState>((set, get) => ({
 
   buyItem: (type, cost) => {
     const { score, maxLives, lives } = get();
+    if (type === 'MAX_LIFE' && maxLives >= 5) return false; // capped at 5
     if (score < cost) return false;
     set({ score: score - cost });
     if (type === 'DOUBLE_JUMP') set({ hasDoubleJump: true });
-    if (type === 'MAX_LIFE')    set({ maxLives: maxLives + 1, lives: lives + 1 });
+    if (type === 'MAX_LIFE')    set({ maxLives: Math.min(maxLives + 1, 5), lives: lives + 1 });
     if (type === 'HEAL')        set({ lives: Math.min(lives + 1, maxLives) });
     if (type === 'IMMORTAL')    set({ hasImmortality: true });
     return true;
