@@ -251,13 +251,13 @@ const ScoreSubmit: React.FC<{ score: number }> = ({ score }) => {
 
 // ─── Shop screen ──────────────────────────────────────────────────────────────
 const ShopScreen: React.FC = () => {
-  const { score, buyItem, closeShop, hasDoubleJump, hasImmortality } = useStore();
+  const { score, buyItem, closeShop, hasDoubleJump, hasImmortality, maxLives } = useStore();
   const ITEMS = [
     { id:'DOUBLE_JUMP', name:'DOUBLE JUMP',  desc:'Jump again mid-air',          cost:1000, icon:ArrowUpCircle, one:true  },
     { id:'MAX_LIFE',    name:'MAX LIFE UP',  desc:'Adds a permanent heart slot', cost:1500, icon:Activity,      one:false },
     { id:'HEAL',        name:'REPAIR KIT',   desc:'Restores 1 life immediately', cost:800,  icon:PlusCircle,    one:false },
     { id:'IMMORTAL',    name:'IMMORTALITY',  desc:'5s invincibility on demand',  cost:3000, icon:Shield,        one:true  },
-  ].filter(i => !(i.id==='DOUBLE_JUMP'&&hasDoubleJump) && !(i.id==='IMMORTAL'&&hasImmortality))
+  ].filter(i => !(i.id==='DOUBLE_JUMP'&&hasDoubleJump) && !(i.id==='IMMORTAL'&&hasImmortality) && !(i.id==='MAX_LIFE'&&maxLives>=5))
    .sort(()=>Math.random()-.5).slice(0,3);
 
   return (
