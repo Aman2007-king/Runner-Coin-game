@@ -1,10 +1,10 @@
-]/**
+/**
  * @license SPDX-License-Identifier: Apache-2.0
  */
 import { create } from 'zustand';
 import {
   GameStatus, RUN_SPEED_BASE, PowerUpType, SkinType,
-  DailyMission, Achievement, SPEED_PER_LETTER, SPEED_PER_LEVEL, MAX_LEVEL,
+  DailyMission, Achievement, SPEED_PER_LETTER, SPEED_PER_LEVEL, MAX_LEVEL, difficultyLevel,
   // ── NEW ────────────────────────────────────────────────────────────────────
   AircraftModel, AIRCRAFT_SPECS, ROCKETS_PER_LEVEL, MAX_SPACE_LEVEL,
 } from './types';
@@ -415,12 +415,9 @@ export const useStore = create<GameState>((set, get) => ({
       // All letters collected — update letters + missions but keep CURRENT speed
       // (do NOT add another speed bump, avoids the freeze/slow issue)
       set({ collectedLetters: newLetters, dailyMissions: missions });
-      if (level < MAX_LEVEL) {
-        get().advanceLevel();
-      } else {
-        // Level 5 complete → aircraft shop
-        get().openAircraftShop();
-      }
+      // Endless mode: always advance to the next level (biomes cycle forever,
+      // see getBiomeForLevel) — the space phase is no longer entered from here.
+      get().advanceLevel();
     } else {
       // Normal letter collection — bump speed per letter
       const newSpeed = speed + RUN_SPEED_BASE * SPEED_PER_LETTER;
@@ -432,9 +429,10 @@ export const useStore = create<GameState>((set, get) => ({
   advanceLevel: () => {
     const { level, laneCount, achievements } = get();
     const nextLevel = level + 1;
-    // Speed resets to a level-appropriate base so it never becomes uncontrollable
-    // Base + 40% per level = Level2: 31.5, L3: 40.5, L4: 49.5, L5: 58.5
-    const newSpeed  = RUN_SPEED_BASE * (1 + (nextLevel - 1) * 0.40);
+    // Speed resets to a level-appropriate base so it never becomes uncontrollable.
+    // difficultyLevel() plateaus the level fed in here past DIFFICULTY_CAP_LEVEL,
+    // so an endless run keeps getting harder for a while, then holds steady.
+    const newSpeed  = RUN_SPEED_BASE * (1 + (difficultyLevel(nextLevel) - 1) * 0.40);
     const newLanes  = Math.min(laneCount + 2, 9);
     const newAch    = achievements.map(a => {
       if (a.id === 'level2' && nextLevel >= 2 && !a.unlocked) return { ...a, unlocked: true };
