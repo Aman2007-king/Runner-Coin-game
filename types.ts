@@ -75,6 +75,17 @@ export const BIOME_BY_LEVEL: Record<number, BiomeType> = {
   10: BiomeType.GALACTIC_HEART,
 };
 
+// The ground runner is now endless — it cycles through the 5 ground biomes
+// forever (level 6 loops back to Jungle Ruins, 7 to Deep Forest, etc.)
+// instead of transitioning into the space phase at level 5.
+const GROUND_BIOME_CYCLE: BiomeType[] = [
+  BiomeType.JUNGLE_RUINS, BiomeType.DEEP_FOREST, BiomeType.DESERT_TEMPLE, BiomeType.CANYON_DUSK, BiomeType.ICE_TEMPLE,
+];
+export function getBiomeForLevel(level: number): BiomeType {
+  const idx = ((level - 1) % GROUND_BIOME_CYCLE.length + GROUND_BIOME_CYCLE.length) % GROUND_BIOME_CYCLE.length;
+  return GROUND_BIOME_CYCLE[idx];
+}
+
 // bg=sky/void colour, fog=matches bg for horizon blending, ambient/dir=lighting,
 // accent=key highlight colour (canopy glow / ice glint / nebula glow),
 // floor=ground colour (levels 1-5) or lane-marker colour (levels 6-10),
@@ -140,6 +151,12 @@ export const RUN_SPEED_BASE  = 22.5;
 export const SPAWN_DISTANCE  = 120;
 export const REMOVE_DISTANCE = 20;
 export const MAX_LEVEL       = 5;
+// The ground runner is endless (see getBiomeForLevel) — `level` itself climbs
+// forever, but every difficulty formula (speed, obstacle gap, sweep speed,
+// letter spacing) reads the level through this cap so difficulty plateaus
+// at a hard-but-fair ceiling instead of scaling to an unplayable speed.
+export const DIFFICULTY_CAP_LEVEL = 20;
+export const difficultyLevel = (level: number) => Math.min(level, DIFFICULTY_CAP_LEVEL);
 
 // Letter speed bump per letter collected (% of base)
 export const SPEED_PER_LETTER = 0.06;
