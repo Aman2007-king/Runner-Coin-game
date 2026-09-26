@@ -6,7 +6,7 @@ import { useFrame } from '@react-three/fiber';
 import { useTexture } from '@react-three/drei';
 import * as THREE from 'three';
 import { useStore } from '../../store';
-import { LANE_WIDTH, BiomeType, BIOME_BY_LEVEL, BIOME_COLORS, ASSET_CONFIG } from '../../types';
+import { LANE_WIDTH, BiomeType, BIOME_BY_LEVEL, BIOME_COLORS, ASSET_CONFIG, getBiomeForLevel } from '../../types';
 import { IS_MOBILE } from '../../utils/device';
 
 const STAR_COUNT = IS_MOBILE ? 800 : 2000;
@@ -814,7 +814,7 @@ const SpaceLaneMarkers: React.FC<{ biome: BiomeType }> = ({ biome }) => {
 export const Environment: React.FC = () => {
   const level     = useStore(s => s.level);
   const gamePhase = useStore(s => s.gamePhase);
-  const biome     = BIOME_BY_LEVEL[level] ?? BiomeType.JUNGLE_RUINS;
+  const biome     = getBiomeForLevel(level);
   const cols      = BIOME_COLORS[biome];
 
   // ── Phase 3: real-galaxy space environment ─────────────────────────────────
