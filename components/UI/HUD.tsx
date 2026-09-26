@@ -12,7 +12,7 @@ import { useStore } from '../../store';
 import {
   GameStatus, GEMINI_COLORS, RUN_SPEED_BASE, SkinType, BiomeType,
   AircraftModel, AIRCRAFT_SPECS, ROCKETS_PER_LEVEL, SPACE_GEM_TARGET_BASE,
-  BIOME_BY_LEVEL, BIOME_COLORS,
+  BIOME_BY_LEVEL, BIOME_COLORS, getBiomeForLevel,
 } from '../../types';
 import { audio } from '../System/Audio';
 import { saveHighScore, getLeaderboard, LeaderboardEntry } from '../../firebase';
@@ -415,7 +415,7 @@ const GameOverScreen: React.FC = () => {
         {[
           { label:'SCORE',    val: score.toLocaleString(),       color:'text-yellow-400' },
           { label:'BEST',     val: highScore.toLocaleString(),   color:'text-cyan-400'   },
-          { label:'LEVEL',    val: `${level}/${5}`,              color:'text-purple-400' },
+          { label:'LEVEL',    val: `${level}`,                    color:'text-purple-400' },
           { label:'GEMS',     val: gemsCollected,                color:'text-pink-400'   },
           { label:'DISTANCE', val: `${Math.floor(distance)} LY`, color:'text-green-400'  },
           { label:'XP',       val: `+${Math.floor(score/10)}`,   color:'text-orange-400' },
@@ -495,7 +495,7 @@ const PlayingHUD: React.FC = () => {
   } = useStore();
 
   const TARGET = ['G','E','M','I','N','I'];
-  const biome  = BIOME_BY_LEVEL[level] ?? BiomeType.JUNGLE_RUINS;
+  const biome  = getBiomeForLevel(level);
   const cols   = BIOME_COLORS[biome];
 
   return (
@@ -527,7 +527,7 @@ const PlayingHUD: React.FC = () => {
       {/* Level badge */}
       <div className="absolute top-4 left-1/2 -translate-x-1/2">
         <div className="px-4 py-1.5 rounded-lg font-cyber text-xs font-bold tracking-widest" style={PLAQUE}>
-          LEVEL {level} / {5} — {biome.replace('_',' ')}
+          LEVEL {level} — {biome.replace('_',' ')}
         </div>
       </div>
 
