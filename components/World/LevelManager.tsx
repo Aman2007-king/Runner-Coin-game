@@ -8,7 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useStore } from '../../store';
 import {
   GameObject, ObjectType, LANE_WIDTH, SPAWN_DISTANCE, REMOVE_DISTANCE,
-  GameStatus, GEMINI_COLORS, PowerUpType, MAX_LEVEL,
+  GameStatus, GEMINI_COLORS, PowerUpType, MAX_LEVEL, difficultyLevel,
   // ── NEW ─────────────────────────────────────────────────────────────────────
   AircraftModel, AIRCRAFT_SPECS,
   SPACE_GEM_VALUE, SPACE_GEM_TARGET_BASE, ENEMY_BULLET_SPEED, GEM_MAGNET_RADIUS,
@@ -102,12 +102,12 @@ const LANE = (laneCount: number) => {
 
 const LETTER_INTERVAL_BASE = 120;
 const getLetterInterval = (level: number) =>
-  Math.max(40, LETTER_INTERVAL_BASE - (level - 1) * 18);
+  Math.max(40, LETTER_INTERVAL_BASE - (difficultyLevel(level) - 1) * 18);
 
 const getMinGap = (level: number, speed: number) =>
-  Math.max(6, 14 - (level - 1) * 1.5 + speed * 0.15);
+  Math.max(6, 14 - (difficultyLevel(level) - 1) * 1.5 + speed * 0.15);
 
-const getSweepSpeed = (level: number) => 1.5 + (level - 1) * 0.6;
+const getSweepSpeed = (level: number) => 1.5 + (difficultyLevel(level) - 1) * 0.6;
 
 // ── Static geometries ──────────────────────────────────────────────────────────
 const OBS_GEO       = new THREE.ConeGeometry(0.9, OBS_H, 6);
