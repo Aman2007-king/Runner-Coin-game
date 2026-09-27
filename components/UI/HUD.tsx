@@ -299,15 +299,17 @@ const ShopScreen: React.FC = () => {
 const PauseScreen: React.FC = () => {
   const { resumeGame, restartGame, setStatus } = useStore();
   return (
-    <div className="absolute inset-0 bg-black/85 z-[200] text-white pointer-events-auto backdrop-blur-md flex flex-col items-center justify-center p-8">
+    <div className="absolute inset-0 z-[200] text-white pointer-events-auto flex flex-col items-center justify-center p-8"
+      style={{ background: 'radial-gradient(ellipse at 50% 50%, rgba(2,2,10,0.35) 0%, rgba(2,2,10,0.8) 100%)' }}>
       <div className="absolute top-4 right-4"><MuteBtn /></div>
-      <h2 className="text-5xl font-black text-cyan-400 mb-10 tracking-widest">PAUSED</h2>
+      <h2 className="text-5xl font-black text-cyan-400 mb-10 tracking-widest drop-shadow-[0_4px_10px_rgba(0,0,0,0.8)]">PAUSED</h2>
       <div className="flex flex-col gap-4 w-full max-w-xs">
-        <button onClick={resumeGame} className="w-full py-4 bg-gradient-to-r from-cyan-600 to-blue-600 font-black text-xl rounded-xl hover:scale-105 transition-all flex items-center justify-center">
+        <button onClick={resumeGame} style={BTN_3D_CYAN}
+          className="w-full py-4 font-black text-xl rounded-2xl transition-all active:translate-y-1.5 active:shadow-none flex items-center justify-center">
           <Play className="mr-3 fill-white" /> RESUME
         </button>
-        <button onClick={restartGame} className="w-full py-3 bg-white/10 border border-white/20 font-bold rounded-xl hover:bg-white/20">RESTART</button>
-        <button onClick={() => setStatus(GameStatus.MENU)} className="text-gray-400 hover:text-white text-sm tracking-widest">[ MAIN MENU ]</button>
+        <button onClick={restartGame} style={PUCK_3D} className="w-full py-3 font-bold rounded-2xl transition-all active:translate-y-1 active:shadow-none">RESTART</button>
+        <button onClick={() => setStatus(GameStatus.MENU)} className="text-gray-300 hover:text-white text-sm tracking-widest drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">[ MAIN MENU ]</button>
       </div>
     </div>
   );
@@ -348,6 +350,19 @@ const SkinShop: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 };
 
 // ─── MENU ─────────────────────────────────────────────────────────────────────
+// ─── 3D-style UI primitives — layered shadows simulate real extrusion/depth
+//     instead of flat gradient pills ─────────────────────────────────────────
+const BTN_3D_CYAN = {
+  background: 'linear-gradient(180deg, #22d3ee 0%, #0e7490 100%)',
+  border: '2px solid #083344',
+  boxShadow: '0 6px 0 #083344, 0 12px 22px rgba(0,0,0,0.55), inset 0 2px 1px rgba(255,255,255,0.45)',
+};
+const PUCK_3D = {
+  background: 'linear-gradient(180deg, #2a2a3a 0%, #14141e 100%)',
+  border: '2px solid #050508',
+  boxShadow: '0 4px 0 #050508, 0 8px 14px rgba(0,0,0,0.5), inset 0 1px 1px rgba(255,255,255,0.15)',
+};
+
 const MenuScreen: React.FC = () => {
   const { startGame, highScore, playerLevel, totalGems } = useStore();
   const [showSkins, setShowSkins] = useState(false);
@@ -356,12 +371,19 @@ const MenuScreen: React.FC = () => {
   const [showLB,    setShowLB   ] = useState(false);
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center z-[100] bg-black/80 backdrop-blur-sm pointer-events-auto">
-      <div className="w-full max-w-sm rounded-3xl overflow-hidden border border-white/10 shadow-[0_0_50px_rgba(0,255,255,0.15)]">
-        <div className="bg-gradient-to-b from-purple-900/60 to-black p-8 flex flex-col items-center">
-          <Rocket className="text-cyan-400 w-16 h-16 mb-3 animate-bounce" />
-          <h1 className="text-4xl font-black text-white tracking-widest mb-1">GEMINI RUN</h1>
-          <p className="text-cyan-400 font-mono text-sm tracking-widest mb-2">BEAT THE UNIVERSE</p>
+    <div className="absolute inset-0 flex items-end sm:items-center justify-center z-[100] pointer-events-none"
+      style={{ background: 'radial-gradient(ellipse at 50% 30%, transparent 0%, transparent 40%, rgba(2,2,10,0.75) 100%)' }}>
+      <div className="w-full max-w-sm rounded-3xl overflow-hidden pointer-events-auto mb-0 sm:mb-0"
+        style={{
+          background: 'rgba(12,8,30,0.55)',
+          backdropFilter: 'blur(14px)',
+          border: '1px solid rgba(255,255,255,0.12)',
+          boxShadow: '0 0 60px rgba(0,255,255,0.15), 0 -10px 40px rgba(0,0,0,0.4)',
+        }}>
+        <div className="p-8 flex flex-col items-center">
+          <Rocket className="text-cyan-400 w-16 h-16 mb-3 animate-bounce drop-shadow-[0_4px_8px_rgba(0,0,0,0.6)]" />
+          <h1 className="text-4xl font-black text-white tracking-widest mb-1 drop-shadow-[0_3px_6px_rgba(0,0,0,0.8)]">GEMINI RUN</h1>
+          <p className="text-cyan-400 font-mono text-sm tracking-widest mb-2">ENDLESS · BEAT YOUR BEST</p>
 
           <div className="flex gap-4 text-sm mb-6">
             <span className="text-yellow-400 flex items-center gap-1"><Trophy className="w-4 h-4" />{highScore.toLocaleString()}</span>
@@ -370,19 +392,20 @@ const MenuScreen: React.FC = () => {
           </div>
 
           <button onClick={() => { audio.init(); startGame(); }}
-            className="w-full py-4 bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-black text-xl rounded-xl hover:brightness-110 transition-all mb-4 shadow-[0_0_20px_rgba(0,255,255,0.3)]">
+            style={BTN_3D_CYAN}
+            className="w-full py-4 text-white font-black text-xl rounded-2xl transition-all mb-4 active:translate-y-1.5 active:shadow-none hover:brightness-110">
             INITIALIZE RUN ▶
           </button>
 
           <div className="flex gap-3 mt-2">
-            <button onClick={() => setShowSkins(true)} className="p-2 bg-white/5 border border-white/10 rounded-full hover:bg-white/10 transition-all"><Palette className="text-pink-500 w-5 h-5" /></button>
-            <button onClick={() => setShowAch(true)}   className="p-2 bg-white/5 border border-white/10 rounded-full hover:bg-white/10 transition-all"><Award className="text-yellow-500 w-5 h-5" /></button>
-            <button onClick={() => setShowMiss(true)}  className="p-2 bg-white/5 border border-white/10 rounded-full hover:bg-white/10 transition-all"><Target className="text-cyan-500 w-5 h-5" /></button>
-            <button onClick={() => setShowLB(true)}    className="p-2 bg-white/5 border border-white/10 rounded-full hover:bg-white/10 transition-all"><Crown className="text-yellow-400 w-5 h-5" /></button>
+            <button onClick={() => setShowSkins(true)} style={PUCK_3D} className="p-2.5 rounded-full transition-all active:translate-y-1 active:shadow-none"><Palette className="text-pink-400 w-5 h-5" /></button>
+            <button onClick={() => setShowAch(true)}   style={PUCK_3D} className="p-2.5 rounded-full transition-all active:translate-y-1 active:shadow-none"><Award className="text-yellow-400 w-5 h-5" /></button>
+            <button onClick={() => setShowMiss(true)}  style={PUCK_3D} className="p-2.5 rounded-full transition-all active:translate-y-1 active:shadow-none"><Target className="text-cyan-400 w-5 h-5" /></button>
+            <button onClick={() => setShowLB(true)}    style={PUCK_3D} className="p-2.5 rounded-full transition-all active:translate-y-1 active:shadow-none"><Crown className="text-yellow-400 w-5 h-5" /></button>
             <MuteBtn />
           </div>
 
-          <p className="text-gray-600 text-[10px] font-mono mt-4 tracking-wider text-center">ARROWS/SWIPE · ↓ SLIDE · ↑ JUMP · SPACE IMMORTAL</p>
+          <p className="text-gray-400 text-[10px] font-mono mt-4 tracking-wider text-center drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">ARROWS/SWIPE · ↓ SLIDE · ↑ JUMP · SPACE IMMORTAL</p>
         </div>
       </div>
       {showSkins && <SkinShop onClose={() => setShowSkins(false)} />}
@@ -401,8 +424,9 @@ const GameOverScreen: React.FC = () => {
   const newUnlocked = achievements.filter(a => newAchievements.includes(a.id));
 
   return (
-    <div className="absolute inset-0 bg-black/90 z-[100] text-white pointer-events-auto flex flex-col items-center justify-center p-6">
-      <h1 className="text-5xl font-black mb-2 text-red-400 drop-shadow-[0_0_10px_rgba(255,0,0,0.6)]">GAME OVER</h1>
+    <div className="absolute inset-0 z-[100] text-white pointer-events-auto flex flex-col items-center justify-center p-6"
+      style={{ background: 'radial-gradient(ellipse at 50% 40%, rgba(20,2,2,0.55) 0%, rgba(5,2,2,0.9) 100%)' }}>
+      <h1 className="text-5xl font-black mb-2 text-red-400 drop-shadow-[0_4px_10px_rgba(0,0,0,0.8)]">GAME OVER</h1>
       {newUnlocked.length > 0 && (
         <div className="mb-4 cursor-pointer" onClick={() => setShowAch(true)}>
           <div className="flex items-center gap-2 bg-yellow-900/80 border border-yellow-500 px-4 py-2 rounded-xl">
@@ -420,18 +444,19 @@ const GameOverScreen: React.FC = () => {
           { label:'DISTANCE', val: `${Math.floor(distance)} LY`, color:'text-green-400'  },
           { label:'XP',       val: `+${Math.floor(score/10)}`,   color:'text-orange-400' },
         ].map(s => (
-          <div key={s.label} className="bg-gray-900 border border-gray-700 p-3 rounded-lg text-center">
-            <div className="text-gray-500 text-xs mb-1">{s.label}</div>
+          <div key={s.label} className="p-3 rounded-xl text-center"
+            style={{ background: 'linear-gradient(180deg, rgba(40,40,55,0.9), rgba(15,15,22,0.9))', boxShadow: '0 3px 0 rgba(0,0,0,0.5), inset 0 1px 1px rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <div className="text-gray-400 text-xs mb-1">{s.label}</div>
             <div className={`text-xl font-bold font-mono ${s.color}`}>{s.val}</div>
           </div>
         ))}
       </div>
       <ScoreSubmit score={score} />
-      <button onClick={() => { audio.init(); restartGame(); }}
-        className="px-10 py-4 bg-gradient-to-r from-cyan-500 to-blue-600 font-black text-xl rounded-xl hover:scale-105 transition-all shadow-[0_0_20px_rgba(0,255,255,0.3)] mb-3">
+      <button onClick={() => { audio.init(); restartGame(); }} style={BTN_3D_CYAN}
+        className="px-10 py-4 font-black text-xl rounded-2xl transition-all active:translate-y-1.5 active:shadow-none mb-3">
         RUN AGAIN ▶
       </button>
-      <button onClick={() => setShowLB(true)} className="flex items-center gap-1.5 text-gray-400 hover:text-yellow-400 text-sm font-bold transition-colors">
+      <button onClick={() => setShowLB(true)} className="flex items-center gap-1.5 text-gray-300 hover:text-yellow-400 text-sm font-bold transition-colors drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">
         <Crown className="w-4 h-4" /> View Leaderboard
       </button>
       {showAch && <AchievementsPanel onClose={() => { setShowAch(false); dismissAchievements(); }} />}
