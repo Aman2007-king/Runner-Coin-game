@@ -19,15 +19,28 @@ import { IS_MOBILE } from './utils/device';
 
 const CameraController: React.FC = () => {
   const { camera, size } = useThree();
-  const { laneCount, screenShake, decayScreenShake } = useStore();
+  const { laneCount, screenShake, decayScreenShake, status } = useStore();
   const shakeOffset = useRef(new THREE.Vector3());
 
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
+    const dt = Math.min(delta, 0.05);
+
+    // Cinematic slow orbit while on the Menu screen — makes the 3D world
+    // behind the UI feel like an actual showcased background, not a frozen
+    // gameplay-cam snapshot.
+    if (status === GameStatus.MENU) {
+      const t = state.clock.elapsedTime * 0.15;
+      const radius = 9;
+      const target = new THREE.Vector3(Math.sin(t) * radius, 4.5, Math.cos(t) * radius - 8);
+      camera.position.lerp(target, dt * 1.2);
+      camera.lookAt(0, 1.2, -8);
+      return;
+    }
+
     const isMobile = size.width / size.height < 1.2;
     const extra    = Math.max(0, laneCount - 3);
     const targetY  = 5.5 + extra * (isMobile ? 2.0 : 0.5);
     const targetZ  = 8.0 + extra * (isMobile ? 4.5 : 1.0);
-    const dt       = Math.min(delta, 0.05);
     camera.position.lerp(new THREE.Vector3(0, targetY, targetZ), dt * 2.0);
     camera.lookAt(0, 0, -30);
     if (screenShake > 0) {
