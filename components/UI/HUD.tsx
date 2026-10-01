@@ -82,17 +82,17 @@ const AchievementToast: React.FC = () => {
 const MissionsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const { dailyMissions, claimMissionReward } = useStore();
   return (
-    <div className="absolute inset-0 bg-black/95 z-[110] text-white pointer-events-auto flex flex-col items-center justify-center p-6">
-      <h2 className="text-3xl font-black text-cyan-400 mb-6 tracking-widest">DAILY MISSIONS</h2>
-      <div className="w-full max-w-md space-y-4 mb-8">
+    <div className="absolute inset-0 z-[110] text-white pointer-events-auto flex flex-col items-center justify-center p-6" style={{ background: STONE_PANEL_BG }}>
+      <h2 className="text-3xl font-black mb-6 tracking-widest font-cyber" style={{ color: '#f0cf6e', textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>DAILY MISSIONS</h2>
+      <div className="w-full max-w-md space-y-4 mb-8 max-h-[55vh] overflow-y-auto">
         {dailyMissions.map(m => {
           const pct    = Math.min(100, Math.round((m.current / m.target) * 100));
           const claimed = m.claimed;
           return (
-            <div key={m.id} className="bg-gray-900 border border-gray-700 rounded-xl p-4">
+            <div key={m.id} className="rounded-xl p-4" style={STONE_TILE}>
               <div className="flex justify-between items-start mb-2">
                 <div>
-                  <div className="font-bold text-lg">{m.label}</div>
+                  <div className="font-bold text-lg text-gray-100">{m.label}</div>
                   <div className="text-gray-400 text-sm">
                     {m.type === 'gems'     ? `Collect ${m.target} gems`    :
                      m.type === 'distance' ? `Run ${m.target} light years` :
@@ -100,18 +100,18 @@ const MissionsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                                             'Complete a run without damage'}
                   </div>
                 </div>
-                <div className="text-yellow-400 font-bold flex items-center gap-1">
+                <div className="font-bold flex items-center gap-1" style={{ color: '#f0cf6e' }}>
                   <Diamond className="w-4 h-4" />{m.reward}
                 </div>
               </div>
-              <div className="h-2 bg-gray-700 rounded-full overflow-hidden mb-2">
-                <div className="h-full bg-cyan-500 transition-all" style={{ width: `${pct}%` }} />
+              <div className="h-2.5 bg-black/50 rounded-full overflow-hidden mb-2 border border-black/60">
+                <div className="h-full transition-all" style={{ width: `${pct}%`, background: 'linear-gradient(90deg, #c99a3a, #f0cf6e)' }} />
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-xs text-gray-500">{claimed ? 'Claimed' : m.completed ? 'Complete!' : `${m.current}/${m.target}`}</span>
+                <span className="text-xs text-gray-400">{claimed ? 'Claimed' : m.completed ? 'Complete!' : `${m.current}/${m.target}`}</span>
                 {m.completed && !claimed && (
-                  <button onClick={() => claimMissionReward(m.id)}
-                    className="flex items-center gap-1 bg-yellow-600 px-3 py-1 rounded font-bold text-sm hover:bg-yellow-500">
+                  <button onClick={() => claimMissionReward(m.id)} style={PLAQUE}
+                    className={`flex items-center gap-1 px-3 py-1.5 rounded-lg font-bold text-sm ${activePlaqueBtn}`}>
                     <CheckCircle2 className="w-4 h-4" /> Claim
                   </button>
                 )}
@@ -121,7 +121,7 @@ const MissionsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           );
         })}
       </div>
-      <button onClick={onClose} className="px-10 py-3 bg-white text-black font-black rounded-full hover:scale-105 transition-all">BACK</button>
+      <button onClick={onClose} style={STONE_BTN} className={`px-10 py-3 font-black rounded-full ${activePlaqueBtn}`}>BACK</button>
     </div>
   );
 };
@@ -130,21 +130,21 @@ const MissionsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 const AchievementsPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const { achievements } = useStore();
   return (
-    <div className="absolute inset-0 bg-black/95 z-[110] text-white pointer-events-auto flex flex-col items-center justify-center p-6">
-      <h2 className="text-3xl font-black text-yellow-400 mb-6 tracking-widest">ACHIEVEMENTS</h2>
+    <div className="absolute inset-0 z-[110] text-white pointer-events-auto flex flex-col items-center justify-center p-6" style={{ background: STONE_PANEL_BG }}>
+      <h2 className="text-3xl font-black mb-6 tracking-widest font-cyber" style={{ color: '#f0cf6e', textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>ACHIEVEMENTS</h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-lg mb-8 overflow-y-auto max-h-[60vh]">
         {achievements.map(a => (
-          <div key={a.id} className={`p-3 rounded-xl border flex items-center gap-3 ${a.unlocked ? 'border-yellow-500 bg-yellow-900/20' : 'border-gray-800 bg-gray-900/50 opacity-50'}`}>
+          <div key={a.id} className="p-3 rounded-xl flex items-center gap-3" style={a.unlocked ? PLAQUE : { ...STONE_TILE, opacity: 0.55 }}>
             <span className="text-2xl">{a.icon}</span>
             <div>
-              <div className="font-bold text-sm">{a.label}</div>
-              <div className="text-gray-400 text-xs">{a.description}</div>
+              <div className="font-bold text-sm" style={a.unlocked ? { color: '#3a2205' } : undefined}>{a.label}</div>
+              <div className="text-xs" style={a.unlocked ? { color: '#5a4010' } : { color: '#9a9084' }}>{a.description}</div>
             </div>
-            {a.unlocked && <CheckCircle2 className="ml-auto text-yellow-400 w-5 h-5 flex-shrink-0" />}
+            {a.unlocked && <CheckCircle2 className="ml-auto w-5 h-5 flex-shrink-0" style={{ color: '#3a2205' }} />}
           </div>
         ))}
       </div>
-      <button onClick={onClose} className="px-10 py-3 bg-white text-black font-black rounded-full hover:scale-105 transition-all">BACK</button>
+      <button onClick={onClose} style={STONE_BTN} className={`px-10 py-3 font-black rounded-full ${activePlaqueBtn}`}>BACK</button>
     </div>
   );
 };
@@ -162,20 +162,20 @@ const LeaderboardPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     return () => { cancelled = true; };
   }, []);
 
-  const rankStyle = (i: number) =>
-    i === 0 ? 'border-yellow-500 bg-yellow-900/20' :
-    i === 1 ? 'border-gray-400 bg-gray-700/30'   :
-    i === 2 ? 'border-orange-700 bg-orange-900/20' :
-              'border-gray-800 bg-gray-900/50';
+  const rankStyle = (i: number): React.CSSProperties =>
+    i === 0 ? PLAQUE :
+    i === 1 ? { ...STONE_TILE, background: 'linear-gradient(180deg, #9a9488 0%, #5c554a 100%)' } :
+    i === 2 ? { ...STONE_TILE, background: 'linear-gradient(180deg, #8a6a4a 0%, #4a3826 100%)' } :
+              STONE_TILE;
 
   return (
-    <div className="absolute inset-0 bg-black/95 z-[110] text-white pointer-events-auto flex flex-col items-center justify-center p-6">
-      <h2 className="text-3xl font-black text-yellow-400 mb-6 tracking-widest flex items-center gap-2">
+    <div className="absolute inset-0 z-[110] text-white pointer-events-auto flex flex-col items-center justify-center p-6" style={{ background: STONE_PANEL_BG }}>
+      <h2 className="text-3xl font-black mb-6 tracking-widest flex items-center gap-2 font-cyber" style={{ color: '#f0cf6e', textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>
         <Crown className="w-7 h-7" /> LEADERBOARD
       </h2>
       <div className="w-full max-w-md space-y-2 mb-8 max-h-[55vh] overflow-y-auto">
         {entries === null && !failed && (
-          <div className="flex items-center justify-center gap-2 text-gray-400 py-10">
+          <div className="flex items-center justify-center gap-2 text-gray-300 py-10">
             <Loader2 className="w-5 h-5 animate-spin" /> Loading scores…
           </div>
         )}
@@ -183,17 +183,21 @@ const LeaderboardPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           <div className="text-red-400 text-center py-10 text-sm">Couldn't load the leaderboard. Check your connection and try again.</div>
         )}
         {entries && entries.length === 0 && (
-          <div className="text-gray-500 text-center py-10">No scores yet — be the first!</div>
+          <div className="text-gray-400 text-center py-10">No scores yet — be the first!</div>
         )}
-        {entries && entries.map((e, i) => (
-          <div key={i} className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${rankStyle(i)}`}>
-            <span className="w-6 text-center font-black text-gray-400">{i + 1}</span>
-            <span className="flex-1 font-bold truncate">{e.name}</span>
-            <span className="font-mono font-bold text-cyan-400">{e.score.toLocaleString()}</span>
-          </div>
-        ))}
+        {entries && entries.map((e, i) => {
+          const s = rankStyle(i);
+          const dark = i > 2;
+          return (
+            <div key={i} className="flex items-center gap-3 px-4 py-3 rounded-xl" style={s}>
+              <span className="w-6 text-center font-black" style={{ color: dark ? '#9a9084' : 'inherit', opacity: dark ? 1 : 0.7 }}>{i + 1}</span>
+              <span className="flex-1 font-bold truncate" style={{ color: i===0 ? '#3a2205' : '#f3ead9' }}>{e.name}</span>
+              <span className="font-mono font-bold" style={{ color: i===0 ? '#3a2205' : '#f0cf6e' }}>{e.score.toLocaleString()}</span>
+            </div>
+          );
+        })}
       </div>
-      <button onClick={onClose} className="px-10 py-3 bg-white text-black font-black rounded-full hover:scale-105 transition-all">BACK</button>
+      <button onClick={onClose} style={STONE_BTN} className={`px-10 py-3 font-black rounded-full ${activePlaqueBtn}`}>BACK</button>
     </div>
   );
 };
@@ -234,12 +238,14 @@ const ScoreSubmit: React.FC<{ score: number }> = ({ score }) => {
           onChange={e => setName(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') submit(); }}
           placeholder="Your name"
-          className="flex-1 min-w-0 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-cyan-500"
+          className="flex-1 min-w-0 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:outline-none"
+          style={{ background: 'linear-gradient(180deg, #2a2018, #1a130d)', border: '2px solid #4a3826', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.6)' }}
         />
         <button
           onClick={submit}
           disabled={!name.trim() || state === 'submitting'}
-          className="flex items-center gap-1.5 px-4 py-2 bg-cyan-600 rounded-lg font-bold text-sm hover:bg-cyan-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+          style={!name.trim() || state === 'submitting' ? STONE_TILE : PLAQUE}
+          className={`flex items-center gap-1.5 px-4 py-2 rounded-lg font-bold text-sm disabled:cursor-not-allowed ${activePlaqueBtn}`}>
           {state === 'submitting' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           Submit
         </button>
@@ -261,35 +267,36 @@ const ShopScreen: React.FC = () => {
    .sort(()=>Math.random()-.5).slice(0,3);
 
   return (
-    <div className="absolute inset-0 bg-black/90 z-[100] text-white pointer-events-auto backdrop-blur-md flex flex-col items-center justify-center p-6">
+    <div className="absolute inset-0 z-[100] text-white pointer-events-auto flex flex-col items-center justify-center p-6" style={{ background: STONE_PANEL_BG }}>
       <div className="flex items-center justify-between w-full max-w-2xl mb-2">
-        <h2 className="text-3xl font-black text-cyan-400 tracking-widest">CYBER SHOP</h2>
+        <h2 className="text-3xl font-black tracking-widest font-cyber" style={{ color: '#f0cf6e', textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>TEMPLE SHOP</h2>
         <MuteBtn />
       </div>
-      <div className="flex items-center text-yellow-400 mb-6">
-        <span className="mr-2">CREDITS:</span>
-        <span className="text-2xl font-bold">{score.toLocaleString()}</span>
+      <div className="flex items-center mb-6 px-4 py-1.5 rounded-full" style={STONE_TILE}>
+        <span className="mr-2 text-gray-300">CREDITS:</span>
+        <span className="text-2xl font-bold" style={{ color: '#f0cf6e' }}>{score.toLocaleString()}</span>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl w-full mb-8">
         {ITEMS.map(item => {
           const Icon = item.icon;
           const can  = score >= item.cost;
           return (
-            <div key={item.id} className="bg-gray-900 border border-gray-700 p-5 rounded-xl flex flex-col items-center text-center hover:border-cyan-500 transition-colors">
-              <div className="bg-gray-800 p-3 rounded-full mb-3"><Icon className="w-7 h-7 text-cyan-400" /></div>
-              <h3 className="font-bold text-lg mb-1">{item.name}</h3>
+            <div key={item.id} className="p-5 rounded-xl flex flex-col items-center text-center" style={STONE_TILE}>
+              <div className="p-3 rounded-full mb-3" style={{ background: 'rgba(0,0,0,0.4)' }}><Icon className="w-7 h-7" style={{ color: '#f0cf6e' }} /></div>
+              <h3 className="font-bold text-lg mb-1 text-gray-100">{item.name}</h3>
               <p className="text-gray-400 text-xs mb-4 h-8 flex items-center">{item.desc}</p>
               <button onClick={() => buyItem(item.id as any, item.cost)} disabled={!can}
-                className={`px-5 py-2 rounded font-bold w-full text-sm ${can ? 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:brightness-110' : 'bg-gray-700 opacity-50 cursor-not-allowed'}`}>
+                style={can ? PLAQUE : { ...STONE_TILE, opacity: 0.5 }}
+                className={`px-5 py-2 rounded-lg font-bold w-full text-sm disabled:cursor-not-allowed ${activePlaqueBtn}`}>
                 {item.cost} GEMS
               </button>
             </div>
           );
         })}
       </div>
-      <button onClick={closeShop}
-        className="flex items-center px-8 py-3 bg-gradient-to-r from-purple-600 to-pink-600 font-bold text-lg rounded hover:scale-105 transition-all">
-        RESUME <Play className="ml-2 w-5 h-5" fill="white" />
+      <button onClick={closeShop} style={PLAQUE}
+        className={`flex items-center px-8 py-3 font-bold text-lg rounded-xl ${activePlaqueBtn}`}>
+        RESUME <Play className="ml-2 w-5 h-5" fill="#3a2205" />
       </button>
     </div>
   );
@@ -304,11 +311,11 @@ const PauseScreen: React.FC = () => {
       <div className="absolute top-4 right-4"><MuteBtn /></div>
       <h2 className="text-5xl font-black text-cyan-400 mb-10 tracking-widest drop-shadow-[0_4px_10px_rgba(0,0,0,0.8)]">PAUSED</h2>
       <div className="flex flex-col gap-4 w-full max-w-xs">
-        <button onClick={resumeGame} style={BTN_3D_CYAN}
+        <button onClick={resumeGame} style={PLAQUE}
           className="w-full py-4 font-black text-xl rounded-2xl transition-all active:translate-y-1.5 active:shadow-none flex items-center justify-center">
-          <Play className="mr-3 fill-white" /> RESUME
+          <Play className="mr-3" fill="#3a2205" /> RESUME
         </button>
-        <button onClick={restartGame} style={PUCK_3D} className="w-full py-3 font-bold rounded-2xl transition-all active:translate-y-1 active:shadow-none">RESTART</button>
+        <button onClick={restartGame} style={STONE_BTN} className="w-full py-3 font-bold rounded-2xl transition-all active:translate-y-1 active:shadow-none">RESTART</button>
         <button onClick={() => setStatus(GameStatus.MENU)} className="text-gray-300 hover:text-white text-sm tracking-widest drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">[ MAIN MENU ]</button>
       </div>
     </div>
@@ -325,44 +332,35 @@ const SkinShop: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     { type:SkinType.PHANTOM,   name:'PHANTOM',      cost:2000, color:'#ff00ff' },
   ];
   return (
-    <div className="absolute inset-0 bg-black/95 z-[110] text-white pointer-events-auto flex flex-col items-center justify-center p-6">
-      <h2 className="text-3xl font-black text-pink-500 mb-4 tracking-widest">SKIN PROTOCOLS</h2>
-      <div className="flex items-center text-cyan-400 mb-6"><Diamond className="mr-2" /><span className="text-xl font-bold">{totalGems}</span></div>
+    <div className="absolute inset-0 z-[110] text-white pointer-events-auto flex flex-col items-center justify-center p-6" style={{ background: STONE_PANEL_BG }}>
+      <h2 className="text-3xl font-black mb-4 tracking-widest font-cyber" style={{ color: '#f0cf6e', textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>SKIN PROTOCOLS</h2>
+      <div className="flex items-center mb-6 px-4 py-1.5 rounded-full" style={STONE_TILE}>
+        <Diamond className="mr-2" style={{ color: '#f0cf6e' }} /><span className="text-xl font-bold" style={{ color: '#f0cf6e' }}>{totalGems}</span>
+      </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 w-full max-w-xl mb-8">
         {SKINS.map(s => {
           const unlocked = unlockedSkins.includes(s.type);
           const selected = currentSkin === s.type;
           return (
-            <div key={s.type} className={`p-4 rounded-xl border-2 flex flex-col items-center ${selected ? 'border-white bg-white/10' : 'border-gray-800 bg-gray-900'}`}>
-              <div className="w-12 h-12 rounded-full mb-3" style={{ background: s.color }} />
-              <div className="font-bold text-sm text-center mb-3">{s.name}</div>
+            <div key={s.type} className="p-4 rounded-xl flex flex-col items-center" style={selected ? PLAQUE : STONE_TILE}>
+              <div className="w-12 h-12 rounded-full mb-3 border-2 border-black/40" style={{ background: s.color }} />
+              <div className="font-bold text-sm text-center mb-3" style={selected ? { color: '#3a2205' } : undefined}>{s.name}</div>
               {unlocked
-                ? <button onClick={() => setSkin(s.type)} className={`w-full py-1 rounded font-bold text-sm ${selected ? 'bg-white text-black' : 'bg-gray-700'}`}>{selected?'ACTIVE':'SELECT'}</button>
+                ? <button onClick={() => setSkin(s.type)} style={selected ? { background: 'rgba(0,0,0,0.25)', color: '#3a2205' } : STONE_BTN}
+                    className={`w-full py-1.5 rounded-lg font-bold text-sm ${activePlaqueBtn}`}>{selected?'ACTIVE':'SELECT'}</button>
                 : <button onClick={() => unlockSkin(s.type, s.cost)} disabled={totalGems < s.cost}
-                    className={`w-full py-1 rounded font-bold text-sm ${totalGems >= s.cost ? 'bg-pink-600' : 'bg-gray-800 text-gray-500'}`}>{s.cost} GEMS</button>}
+                    style={totalGems >= s.cost ? PLAQUE : { ...STONE_TILE, opacity: 0.5 }}
+                    className={`w-full py-1.5 rounded-lg font-bold text-sm disabled:cursor-not-allowed ${activePlaqueBtn}`}>{s.cost} GEMS</button>}
             </div>
           );
         })}
       </div>
-      <button onClick={onClose} className="px-10 py-3 bg-white text-black font-black rounded-full hover:scale-105 transition-all">BACK</button>
+      <button onClick={onClose} style={STONE_BTN} className={`px-10 py-3 font-black rounded-full ${activePlaqueBtn}`}>BACK</button>
     </div>
   );
 };
 
 // ─── MENU ─────────────────────────────────────────────────────────────────────
-// ─── 3D-style UI primitives — layered shadows simulate real extrusion/depth
-//     instead of flat gradient pills ─────────────────────────────────────────
-const BTN_3D_CYAN = {
-  background: 'linear-gradient(180deg, #22d3ee 0%, #0e7490 100%)',
-  border: '2px solid #083344',
-  boxShadow: '0 6px 0 #083344, 0 12px 22px rgba(0,0,0,0.55), inset 0 2px 1px rgba(255,255,255,0.45)',
-};
-const PUCK_3D = {
-  background: 'linear-gradient(180deg, #2a2a3a 0%, #14141e 100%)',
-  border: '2px solid #050508',
-  boxShadow: '0 4px 0 #050508, 0 8px 14px rgba(0,0,0,0.5), inset 0 1px 1px rgba(255,255,255,0.15)',
-};
-
 const MenuScreen: React.FC = () => {
   const { startGame, highScore, playerLevel, totalGems } = useStore();
   const [showSkins, setShowSkins] = useState(false);
@@ -392,16 +390,16 @@ const MenuScreen: React.FC = () => {
           </div>
 
           <button onClick={() => { audio.init(); startGame(); }}
-            style={BTN_3D_CYAN}
+            style={PLAQUE}
             className="w-full py-4 text-white font-black text-xl rounded-2xl transition-all mb-4 active:translate-y-1.5 active:shadow-none hover:brightness-110">
             INITIALIZE RUN ▶
           </button>
 
           <div className="flex gap-3 mt-2">
-            <button onClick={() => setShowSkins(true)} style={PUCK_3D} className="p-2.5 rounded-full transition-all active:translate-y-1 active:shadow-none"><Palette className="text-pink-400 w-5 h-5" /></button>
-            <button onClick={() => setShowAch(true)}   style={PUCK_3D} className="p-2.5 rounded-full transition-all active:translate-y-1 active:shadow-none"><Award className="text-yellow-400 w-5 h-5" /></button>
-            <button onClick={() => setShowMiss(true)}  style={PUCK_3D} className="p-2.5 rounded-full transition-all active:translate-y-1 active:shadow-none"><Target className="text-cyan-400 w-5 h-5" /></button>
-            <button onClick={() => setShowLB(true)}    style={PUCK_3D} className="p-2.5 rounded-full transition-all active:translate-y-1 active:shadow-none"><Crown className="text-yellow-400 w-5 h-5" /></button>
+            <button onClick={() => setShowSkins(true)} style={STONE_BTN} className="p-2.5 rounded-full transition-all active:translate-y-1 active:shadow-none"><Palette className="text-pink-400 w-5 h-5" /></button>
+            <button onClick={() => setShowAch(true)}   style={STONE_BTN} className="p-2.5 rounded-full transition-all active:translate-y-1 active:shadow-none"><Award className="text-yellow-400 w-5 h-5" /></button>
+            <button onClick={() => setShowMiss(true)}  style={STONE_BTN} className="p-2.5 rounded-full transition-all active:translate-y-1 active:shadow-none"><Target className="text-cyan-400 w-5 h-5" /></button>
+            <button onClick={() => setShowLB(true)}    style={STONE_BTN} className="p-2.5 rounded-full transition-all active:translate-y-1 active:shadow-none"><Crown className="text-yellow-400 w-5 h-5" /></button>
             <MuteBtn />
           </div>
 
@@ -452,7 +450,7 @@ const GameOverScreen: React.FC = () => {
         ))}
       </div>
       <ScoreSubmit score={score} />
-      <button onClick={() => { audio.init(); restartGame(); }} style={BTN_3D_CYAN}
+      <button onClick={() => { audio.init(); restartGame(); }} style={PLAQUE}
         className="px-10 py-4 font-black text-xl rounded-2xl transition-all active:translate-y-1.5 active:shadow-none mb-3">
         RUN AGAIN ▶
       </button>
@@ -498,11 +496,11 @@ const VictoryScreen: React.FC = () => {
   );
 };
 
-// ─── Main HUD (playing) ───────────────────────────────────────────────────────
+// ─── Stone/gold "ancient temple" UI system — applied across every screen ─────
 const PLAQUE = {
   background: 'linear-gradient(180deg, #f0cf6e 0%, #c99a3a 45%, #8a6420 100%)',
   border: '2px solid #4a3208',
-  boxShadow: 'inset 0 2px 2px rgba(255,255,255,0.5), inset 0 -3px 5px rgba(0,0,0,0.35), 0 3px 6px rgba(0,0,0,0.5)',
+  boxShadow: 'inset 0 2px 2px rgba(255,255,255,0.5), inset 0 -3px 5px rgba(0,0,0,0.35), 0 4px 0 #3a2606, 0 8px 14px rgba(0,0,0,0.5)',
   color: '#3a2205',
 };
 const STONE_TILE = {
@@ -510,6 +508,16 @@ const STONE_TILE = {
   border: '2px solid #241f18',
   boxShadow: 'inset 0 2px 2px rgba(255,255,255,0.2), inset 0 -2px 4px rgba(0,0,0,0.5)',
 };
+// Stone button — secondary actions (Back, Restart, Resume-alt)
+const STONE_BTN = {
+  background: 'linear-gradient(180deg, #857a68 0%, #4a4235 100%)',
+  border: '2px solid #241f18',
+  boxShadow: 'inset 0 2px 2px rgba(255,255,255,0.3), inset 0 -3px 5px rgba(0,0,0,0.35), 0 4px 0 #17130e, 0 8px 14px rgba(0,0,0,0.5)',
+  color: '#f3ead9',
+};
+// Full-screen panel backdrop — weathered stone slab instead of flat black
+const STONE_PANEL_BG = 'radial-gradient(ellipse at 50% 20%, rgba(60,48,32,0.55) 0%, rgba(10,8,6,0.94) 75%)';
+const activePlaqueBtn = 'transition-all active:translate-y-1 active:shadow-none';
 
 const PlayingHUD: React.FC = () => {
   const {
